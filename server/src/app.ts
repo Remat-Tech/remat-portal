@@ -76,7 +76,7 @@ import type { CoverRepository } from './apps/leave/cover/cover.db.js';
 import { CoverService } from './apps/leave/cover/cover.service.js';
 import { coverRoutes } from './apps/leave/cover/routes.js';
 import { DirectoryService } from './apps/directory/directory.service.js';
-import { directoryRoutes } from './apps/directory/routes.js';
+import { type DirectoryLimits, directoryRoutes } from './apps/directory/routes.js';
 import type { PhotoRepository } from './apps/directory/photo.db.js';
 import type { DirectoryEmailService } from './apps/directory/email.service.js';
 import type { EmailOutbox } from './core/notification/outbox.service.js';
@@ -199,6 +199,8 @@ export interface Application {
    * routes and the directory names nobody to contact instead.
    */
   covers?: CoverRepository;
+  /** How much one person may ask of the directory. `DIRECTORY_LIMITS` when not given. */
+  directoryLimits?: DirectoryLimits;
   /** Where a 500 is written down. */
   failures?: FailureLog;
   /** Read from `SESSION_SECRET` when not given. */
@@ -490,6 +492,8 @@ export function buildApp(parts: Application): Express {
     app.use(
       '/api',
       directoryRoutes({
+        guard: parts.guard,
+        limits: parts.directoryLimits,
         directory: new DirectoryService(
           parts.guard,
           parts.employees,

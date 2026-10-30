@@ -238,8 +238,8 @@ async function insertEmployees(db, { departments, patterns, scenario }) {
       `INSERT INTO employee (
          employee_number, first_name, last_name, work_email, job_title,
          department_id, manager_id, work_pattern_id, start_date, exit_date,
-         employment_type, employment_status, gender
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         employment_type, employment_status, gender, work_mobile, description
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING id`,
       [
         person.number,
@@ -255,6 +255,8 @@ async function insertEmployees(db, { departments, patterns, scenario }) {
         person.employmentType ?? 'FULL_TIME',
         person.status ?? 'ACTIVE',
         person.gender ?? null,
+        person.workMobile ?? null,
+        person.description ?? null,
       ],
     );
     people[key] = rows[0].id;
@@ -274,6 +276,7 @@ async function insertEmployees(db, { departments, patterns, scenario }) {
     manager: null,
     startDate: '2014-02-03',
     gender: 'MALE',
+    description: 'Come to me about anything that crosses departments.',
   });
 
   // ---------------------------------------------------------------- level 2
@@ -287,6 +290,8 @@ async function insertEmployees(db, { departments, patterns, scenario }) {
     manager: ceo,
     startDate: '2016-06-13',
     gender: 'FEMALE',
+    workMobile: '+233 24 555 0102',
+    description: 'Contracts, policies and anything to do with your employment.',
   });
 
   const opsDirector = await add('opsDirector', {
@@ -351,6 +356,7 @@ async function insertEmployees(db, { departments, patterns, scenario }) {
     manager: opsDirector,
     startDate: '2019-03-18',
     gender: 'FEMALE',
+    workMobile: '(024) 555-0107',
   });
 
   await add('engineer', {
@@ -363,6 +369,8 @@ async function insertEmployees(db, { departments, patterns, scenario }) {
     manager: headOfEngineering,
     startDate: '2023-02-06',
     gender: 'FEMALE',
+    workMobile: '024 555 0108',
+    description: 'Portal bugs and integrations. Mornings are best.',
   });
 
   // Present only in the base scenario. See the note on grantLogins.
@@ -393,6 +401,7 @@ async function insertEmployees(db, { departments, patterns, scenario }) {
     manager: opsManager,
     startDate: '2022-04-25',
     gender: 'MALE',
+    workMobile: '024 555 0110',
   });
 
   // ---------------------------------------------------------------- level 5
@@ -439,6 +448,9 @@ async function insertEmployees(db, { departments, patterns, scenario }) {
     exitDate: '2026-07-31',
     status: 'TERMINATED',
     gender: 'MALE',
+    // Still on the record, and never shown to anybody but HR.
+    workMobile: '024 555 0113',
+    description: 'Site visits and stock counts.',
   });
 
   return people;

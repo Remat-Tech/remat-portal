@@ -126,6 +126,11 @@ beforeAll(async () => {
   );
 
   const app = buildApp({
+    /* One person asks far more of this file than of the limits, which directory-routes covers. */
+    directoryLimits: {
+      lookups: { max: Infinity, windowSeconds: 60 },
+      photoUploads: { max: Infinity, windowSeconds: 60 },
+    },
     guard,
     signIn: new SignInService(accounts, employees, roles, recordingMailer(), guard, {
       domains: DOMAINS,

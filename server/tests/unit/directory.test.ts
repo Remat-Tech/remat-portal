@@ -19,6 +19,12 @@ import {
   workMobileFrom,
 } from '../../src/apps/directory/profile.js';
 import { firstDayBack } from '../../src/apps/leave/team/away-today.js';
+import {
+  MAINTAINS_EMPLOYEE_RECORDS,
+  PROVIDES_LOGINS,
+  type RoleCode,
+  ROLE_CODES,
+} from '../../src/core/identity/role/roles.js';
 
 /** The staff directory, as rules. */
 
@@ -598,6 +604,113 @@ describe('who may change a profile', () => {
     expect(directoryPolicy.editProfile(theSystem('a directory unit test'), 'adwoa').allowed).toBe(
       false,
     );
+  });
+});
+
+describe('every decision the directory makes', () => {
+  const system = theSystem('a directory unit test');
+  const holding = (code: RoleCode) => signedInAs('adwoa', { roles: [code], isManager: false });
+
+  /* A decision added to the policy fails here until somebody says who it is for. */
+  it('is one of these, each tested below', () => {
+    expect(
+      Object.keys(directoryPolicy)
+        .filter((key) => key !== 'resource')
+        .sort(),
+    ).toEqual([
+      'administer',
+      'chart',
+      'chooseEmails',
+      'editProfile',
+      'loginsToCreate',
+      'read',
+      'readProfile',
+      'sendDailyEmails',
+      'sendMessage',
+      'tellCover',
+    ]);
+  });
+
+  describe.each(ROLE_CODES)('holding only %s', (code) => {
+    const actor = holding(code);
+
+    it('reads the list and the chart, and chooses their own emails', () => {
+      expect(directoryPolicy.read(actor).allowed).toBe(true);
+      expect(directoryPolicy.chart(actor).allowed).toBe(true);
+      expect(directoryPolicy.chooseEmails(actor).allowed).toBe(true);
+    });
+
+    it('reads anybody current', () => {
+      expect(directoryPolicy.readProfile(actor, 'kofi', true).allowed).toBe(true);
+    });
+
+    it('edits their own profile and nobody else’s', () => {
+      expect(directoryPolicy.editProfile(actor, 'adwoa').allowed).toBe(true);
+      expect(directoryPolicy.editProfile(actor, 'kofi').allowed).toBe(false);
+    });
+
+    it('writes to anybody current and not to themselves', () => {
+      expect(directoryPolicy.sendMessage(actor, 'kofi', true).allowed).toBe(true);
+      expect(directoryPolicy.sendMessage(actor, 'adwoa', true).allowed).toBe(false);
+    });
+
+    it('administers only with a role that maintains employee records', () => {
+      expect(directoryPolicy.administer(actor).allowed).toBe(
+        MAINTAINS_EMPLOYEE_RECORDS.includes(code),
+      );
+    });
+
+    it('sees who needs a login only with a role that provides them', () => {
+      expect(directoryPolicy.loginsToCreate(actor).allowed).toBe(PROVIDES_LOGINS.includes(code));
+    });
+
+    it('sends the day’s emails only as a system administrator', () => {
+      expect(directoryPolicy.sendDailyEmails(actor).allowed).toBe(code === 'SYS_ADMIN');
+    });
+
+    it('names cover for a stranger only with a role that maintains employee records', () => {
+      expect(directoryPolicy.tellCover(actor, { id: 'kofi', managerId: 'yaw' }).allowed).toBe(
+        MAINTAINS_EMPLOYEE_RECORDS.includes(code),
+      );
+    });
+  });
+
+  it('turns away the system from everything that needs a person', () => {
+    expect(directoryPolicy.chooseEmails(system).allowed).toBe(false);
+    expect(directoryPolicy.sendMessage(system, 'kofi', true).allowed).toBe(false);
+  });
+
+  it('lets the system send the day’s emails, which is what it is for', () => {
+    expect(directoryPolicy.sendDailyEmails(system).allowed).toBe(true);
+  });
+
+  it('says nothing to somebody writing to a person who is not listed', () => {
+    const refused = directoryPolicy.sendMessage(holding('EMPLOYEE'), 'kojo', false);
+
+    expect(refused.allowed).toBe(false);
+    expect(refused.told).toBeNull();
+  });
+
+  it('says why when somebody writes to themselves', () => {
+    expect(directoryPolicy.sendMessage(holding('EMPLOYEE'), 'adwoa', true).told).toContain(
+      'to yourself',
+    );
+  });
+
+  it('lets the person going on leave and their manager name cover, and nobody else', () => {
+    const employee = holding('EMPLOYEE');
+
+    expect(directoryPolicy.tellCover(employee, { id: 'adwoa', managerId: 'kofi' }).allowed).toBe(
+      true,
+    );
+    expect(directoryPolicy.tellCover(employee, { id: 'kofi', managerId: 'adwoa' }).allowed).toBe(
+      true,
+    );
+
+    const refused = directoryPolicy.tellCover(employee, { id: 'kofi', managerId: 'yaw' });
+
+    expect(refused.allowed).toBe(false);
+    expect(refused.told).toContain('name their cover');
   });
 });
 

@@ -77,6 +77,11 @@ export class Guard {
       return;
     }
 
+    throw new NotAuthorised(this.record(decision), decision.told);
+  }
+
+  /** Writes a refusal down without throwing it, for a door that answers in its own words. */
+  record(decision: Decision): DeniedAttempt {
     const attempt: DeniedAttempt = {
       at: new Date(),
       actor: decision.actor.description,
@@ -93,7 +98,7 @@ export class Guard {
 
     this.denials.record(attempt);
 
-    throw new NotAuthorised(attempt, decision.told);
+    return attempt;
   }
 
   /** The same question without the refusal, and without the log. */

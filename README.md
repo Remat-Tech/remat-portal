@@ -92,6 +92,7 @@ cannot express any of that.
 | [Development](docs/development.md) | Setup in full, environment variables, migrations, roles, testing |
 | [Leave rules](docs/domain-rules.md) | Every rule about types, days, balances and requests, and why |
 | [Authorisation and audit](docs/authorisation-and-audit.md) | Who may do what, and how changes are recorded |
+| [The directory API](docs/directory-api.md) | Every endpoint the staff directory answers, and its limits |
 
 The specification documents — requirements, technical design, business overview,
 policy decisions, backlog — are tracked separately. Requirement IDs (`FR 32a`) appear

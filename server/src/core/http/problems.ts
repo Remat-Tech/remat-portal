@@ -241,6 +241,8 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   EmailIsMandatory: 409,
   /** 429: waiting is the fix, and the message says how long the limit is. */
   TooManyMessages: 429,
+  /** 429: the same, for a route with a limit in front of it. */
+  TooManyRequests: 429,
   /** 503: nothing was sent and trying again is the fix. */
   MessageNotQueued: 503,
   /**

@@ -141,6 +141,11 @@ beforeAll(async () => {
   const outbox = new EmailOutbox(new EmailOutboxRepository(db), recordingMailer(), guard);
 
   const app = buildApp({
+    /* One person asks far more of this file than of the limits, which directory-routes covers. */
+    directoryLimits: {
+      lookups: { max: Infinity, windowSeconds: 60 },
+      photoUploads: { max: Infinity, windowSeconds: 60 },
+    },
     outbox,
     directoryEmails: new DirectoryEmailService(
       guard,
@@ -221,6 +226,47 @@ afterAll(async () => {
 
   await db?.destroy();
   await admin?.end();
+});
+
+describe('what it keeps', () => {
+  /* `email_outbox` keeps an address on purpose: the log says where a message went that day. */
+  it('repeats no field of the employee record in a table of its own', async () => {
+    const { rows } = await admin.query<{ table_name: string; column_name: string }>(
+      `SELECT table_name, column_name FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name IN ('employee_photo', 'email_opt_out')
+          AND column_name <> 'id'
+          AND column_name IN (
+            SELECT column_name FROM information_schema.columns
+             WHERE table_schema = 'public' AND table_name = 'employee')`,
+    );
+
+    expect(rows).toEqual([]);
+  });
+
+  it.each([
+    ['employee_by_last_name', 'lower(last_name)'],
+    ['employee_by_first_name', 'lower(first_name)'],
+  ])('finds somebody by the start of a name through %s', async (index, column) => {
+    /* The table is too small for the planner to choose an index unprompted. */
+    await admin.query('SET enable_seqscan = off');
+
+    const { rows } = await admin.query<{ 'QUERY PLAN': string }>(
+      `EXPLAIN SELECT id FROM employee WHERE ${column} LIKE 'bo%'`,
+    );
+
+    await admin.query('RESET enable_seqscan');
+
+    expect(rows.map((row) => row['QUERY PLAN']).join('\n')).toContain(index);
+  });
+
+  it('finds a department’s people through an index', async () => {
+    const { rows } = await admin.query<{ indexname: string }>(
+      "SELECT indexname FROM pg_indexes WHERE tablename = 'employee'",
+    );
+
+    expect(rows.map((row) => row.indexname)).toContain('idx_employee_department');
+  });
 });
 
 describe('who may read it', () => {

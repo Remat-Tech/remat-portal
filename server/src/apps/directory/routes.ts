@@ -1,7 +1,15 @@
 /** The staff directory, over HTTP. NFR DAT 03. */
 
-import express, { type NextFunction, type Request, type Response, Router } from 'express';
+import express, {
+  type NextFunction,
+  type Request,
+  type RequestHandler,
+  type Response,
+  Router,
+} from 'express';
+import type { Guard } from '../../core/auth/policy.js';
 import { actorOf } from '../../core/http/identify.js';
+import { type RateLimit, rateLimit } from '../../core/http/rate-limit.js';
 import type {
   ChartPerson,
   DepartmentInTheDirectory,
@@ -26,6 +34,8 @@ import type {
 } from './administration.service.js';
 
 export interface DirectoryRoutes {
+  /** NFR SEC 03. Where a request over a limit is written down. */
+  guard: Guard;
   directory: DirectoryService;
   /** Optional, so a test app without photos has no photo routes and shows everybody's initials. */
   photos?: PhotoService;
@@ -33,7 +43,29 @@ export interface DirectoryRoutes {
   emails?: DirectoryEmailService;
   /** HR's Administration tab. Optional, so an app built without one has no such routes. */
   administration?: AdministrationService;
+  /** {@link DIRECTORY_LIMITS}, unless a test needs to reach one sooner or never. */
+  limits?: DirectoryLimits;
 }
+
+/** How much one person may ask of the routes that have a limit. */
+export interface DirectoryLimits {
+  /** Between them, every route that finds people. One count, so moving between them saves nothing. */
+  lookups: RateLimit;
+  photoUploads: RateLimit;
+}
+
+/**
+ * The directory's limits.
+ *
+ * The search box filters what `GET /directory` already answered, so a lookup is a screen opened
+ * and never a keystroke: sixty a minute is nobody working normally, and is somebody walking the
+ * id sequence. Twenty photos an hour leaves room to try again, and each one costs a resize.
+ * Reading a photo has no limit: a list of a few hundred faces is a few hundred requests.
+ */
+export const DIRECTORY_LIMITS: DirectoryLimits = {
+  lookups: { max: 60, windowSeconds: 60 },
+  photoUploads: { max: 20, windowSeconds: 60 * 60 },
+};
 
 /**
  * How long a browser may keep an image without asking again: a year, the longest any of them
@@ -63,20 +95,35 @@ function photoBody(request: Request, response: Response, next: NextFunction): vo
 }
 
 export function directoryRoutes({
+  guard,
   directory,
   photos,
   emails,
   administration,
+  limits = DIRECTORY_LIMITS,
 }: DirectoryRoutes): Router {
   const routes = Router();
 
+  const lookups = rateLimit(
+    guard,
+    'lookUpPeople',
+    limits.lookups,
+    'That is a lot of lookups in a short time. Wait a moment, then try again.',
+  );
+  const uploads = rateLimit(
+    guard,
+    'uploadPhoto',
+    limits.photoUploads,
+    'That is a lot of photos in a short time. Wait a while, then try again.',
+  );
+
   /* Before `/directory/people/:employeeId`, though no path here can be mistaken for one. */
   if (administration !== undefined) {
-    administrationRoutes(routes, administration);
+    administrationRoutes(routes, administration, lookups);
   }
 
   /** Everybody at the company today. Behind identify, so a session is needed to ask. */
-  routes.get('/directory', (_request: Request, response: Response, next) => {
+  routes.get('/directory', lookups, (_request: Request, response: Response, next) => {
     void directory
       .read(actorOf(response))
       .then((found) => {
@@ -98,6 +145,7 @@ export function directoryRoutes({
   /** One person: anybody current to anybody, and a leaver to HR alone. Otherwise 404. */
   routes.get(
     '/directory/people/:employeeId',
+    lookups,
     (request: Request<{ employeeId: string }>, response: Response, next) => {
       void directory
         .person(actorOf(response), request.params.employeeId)
@@ -137,7 +185,7 @@ export function directoryRoutes({
   );
 
   if (photos !== undefined) {
-    photoRoutes(routes, photos);
+    photoRoutes(routes, photos, uploads);
   }
 
   if (emails !== undefined) {
@@ -154,9 +202,13 @@ export function directoryRoutes({
  *
  * No DELETE: a record is never removed. FR 06.
  */
-function administrationRoutes(routes: Router, administration: AdministrationService): void {
+function administrationRoutes(
+  routes: Router,
+  administration: AdministrationService,
+  lookups: RequestHandler,
+): void {
   /** Everybody with a record, leavers included. Searching and filtering are the screen's. */
-  routes.get('/directory/admin/people', (_request: Request, response: Response, next) => {
+  routes.get('/directory/admin/people', lookups, (_request: Request, response: Response, next) => {
     void administration
       .list(actorOf(response))
       .then((list) => {
@@ -389,16 +441,19 @@ function choiceAsJson(choice: EmailChoice): unknown {
   };
 }
 
-function photoRoutes(routes: Router, photos: PhotoService): void {
+function photoRoutes(routes: Router, photos: PhotoService, uploads: RequestHandler): void {
   /**
    * Puts up a photo, replacing any already there. Only its owner may.
    *
    * **The body is the image**, as with attachments: one file, no multipart form. What it is
    * is read from the bytes. The square to cut is `X-Photo-Crop: left,top,side`, in pixels of
    * the image the right way up; without it, the largest square in the middle.
+   *
+   * The limit comes first, so a refused upload is not read off the wire.
    */
   routes.put(
     '/people/:employeeId/photo',
+    uploads,
     photoBody,
     (request: Request<{ employeeId: string }>, response: Response, next) => {
       void photos

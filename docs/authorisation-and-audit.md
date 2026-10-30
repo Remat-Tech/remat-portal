@@ -89,6 +89,12 @@ impossible to forget: a call that does not answer "who is this" does not compile
 | Everything the company is waiting on, and chasing it. FR 50 | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` — and the nightly job | the same, and a reminder decides nothing |
 | Sending again what the mail server refused. FR 59 | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` — and the job that drains it | the same, and a retry sends only what was already written |
 | The wording of the emails. FR 61 | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | `HR_OFFICER`, `HR_ADMIN` |
+| The staff directory and its chart | anybody signed in, for the people here today | — |
+| One person's directory profile, and their photo | anybody signed in for somebody current, and `HR_OFFICER` / `HR_ADMIN` / `SYS_ADMIN` for anybody else | yourself alone, and not HR: the photo, work mobile and description |
+| The directory's Administration tab | `HR_OFFICER`, `HR_ADMIN` | `HR_OFFICER`, `HR_ADMIN` |
+| Who is waiting for a login | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` | — |
+| Which optional emails come to you | yourself | yourself |
+| Writing to a colleague from their profile | | anybody signed in, to anybody current and never to yourself |
 | The audit log screen, searched by record and date | `HR_ADMIN`, `SYS_ADMIN` | — nobody, administrators included |
 | Roles | your own, and `HR_ADMIN` / `SYS_ADMIN` for anybody's | `HR_ADMIN`, `SYS_ADMIN` |
 | Logins: create, set a password | your own account is readable by you | `HR_OFFICER`, `HR_ADMIN`, `SYS_ADMIN` |
@@ -355,9 +361,12 @@ request.
 rather than the usual Lax. The day this API is called from another origin it needs
 a token in the same change.
 
-**No rate limit.** Four hundred refusals in a minute are four hundred lines and no
-delay. The counter belongs in front of the sign in routes in `app.ts`, with
-the one unlimited password guesses need. It needs doing, and it is not done.
+**No rate limit on signing in.** Four hundred refusals in a minute are four hundred
+lines and no delay. `core/http/rate-limit.ts` counts by who is asking, so it cannot go
+in front of these routes as it stands: nobody has been identified yet, and an address
+is shared by a whole office. It needs doing, and it is not done. The directory's
+lookups and photo uploads are limited, by person, and a refusal is logged like any
+other. See [the directory API](directory-api.md#limits).
 
 **`theSystem()` is a back door with a name on it.** A job, a migration, a seed and
 a test fixture all have to write records and none has a person behind them, so
