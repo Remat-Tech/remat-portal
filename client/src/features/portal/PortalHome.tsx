@@ -4,10 +4,13 @@ import type { Me } from '../../api';
 export function PortalHome({
   me,
   initials,
+  clientsOpen,
   onSignOut,
 }: {
   me: Me;
   initials: string;
+  /** False until clients is finished, so its card is shown but not a link. */
+  clientsOpen: boolean;
   onSignOut: () => void;
 }) {
   return (
@@ -49,6 +52,21 @@ export function PortalHome({
               Directory
             </a>
           </li>
+          <li>
+            {clientsOpen ? (
+              <a className="portal-app" href="#/clients">
+                <ClientsMark />
+                Clients
+              </a>
+            ) : (
+              /* Not finished yet, so shown but not a link. */
+              <div className="portal-app is-soon" aria-disabled="true">
+                <ClientsMark />
+                Clients
+                <small>Coming soon</small>
+              </div>
+            )}
+          </li>
         </ul>
       </main>
     </div>
@@ -89,6 +107,17 @@ function DirectoryMark() {
       <circle cx="20" cy="8" r="4" fill="var(--accent)" />
       <circle cx="11" cy="31" r="4" fill="var(--ink)" />
       <circle cx="29" cy="31" r="4" fill="var(--ink)" />
+    </svg>
+  );
+}
+
+/** A pipeline narrowing to the deals that go live. */
+function ClientsMark() {
+  return (
+    <svg className="portal-mark" viewBox="0 0 40 40" aria-hidden="true">
+      <rect x="6" y="8" width="28" height="6" rx="3" fill="var(--ink)" />
+      <rect x="11" y="17" width="18" height="6" rx="3" fill="var(--ink)" />
+      <rect x="16" y="26" width="8" height="6" rx="3" fill="var(--accent)" />
     </svg>
   );
 }
