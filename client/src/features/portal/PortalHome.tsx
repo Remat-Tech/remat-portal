@@ -4,13 +4,16 @@ import type { Me } from '../../api';
 export function PortalHome({
   me,
   initials,
-  clientsOpen,
+  clients,
   onSignOut,
 }: {
   me: Me;
   initials: string;
-  /** False until clients is finished, so its card is shown but not a link. */
-  clientsOpen: boolean;
+  /**
+   * Whether the clients card is drawn: for whoever the server says may see it, and for nobody
+   * else, who are never shown it is there (#274, CLI 93). Nobody in a build until it goes live.
+   */
+  clients: boolean;
   onSignOut: () => void;
 }) {
   return (
@@ -52,21 +55,14 @@ export function PortalHome({
               Directory
             </a>
           </li>
-          <li>
-            {clientsOpen ? (
+          {clients ? (
+            <li>
               <a className="portal-app" href="#/clients">
                 <ClientsMark />
                 Clients
               </a>
-            ) : (
-              /* Not finished yet, so shown but not a link. */
-              <div className="portal-app is-soon" aria-disabled="true">
-                <ClientsMark />
-                Clients
-                <small>Coming soon</small>
-              </div>
-            )}
-          </li>
+            </li>
+          ) : null}
         </ul>
       </main>
     </div>

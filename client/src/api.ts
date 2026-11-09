@@ -2021,6 +2021,15 @@ export async function currentSession(): Promise<Me> {
  * holding roles starts deciding what may be done with them. Every section is refused by
  * its own policy whether or not a card was drawn for it.
  */
+/**
+ * Which of the apps that are only some people's this person may see: `clients`, or nothing.
+ * Each app's own policy answers on the server (#274); the portal home only draws.
+ */
+export async function visibleApps(): Promise<string[]> {
+  const { apps } = await request<{ apps: string[] }>('GET', '/api/me/apps');
+  return apps;
+}
+
 export async function mySections(): Promise<string[]> {
   const { sections } = await request<{ sections: string[] }>('GET', '/api/me/sections');
   return sections;
@@ -3121,4 +3130,52 @@ function errorFrom(status: number, payload: unknown): ApiError {
           'tell IT roughly when you tried if it keeps happening.',
     typeof body.field === 'string' ? body.field : undefined,
   );
+}
+
+/* ------------------------------------------------------------------- clients, #274 */
+
+/** The two roles clients grants. */
+export type ClientsRole = 'BD_MANAGER' | 'ASSOCIATE';
+
+/** Somebody, as the clients roles screen names them. */
+export interface ClientsPerson {
+  id: string;
+  name: string;
+  jobTitle: string | null;
+}
+
+/** A live clients grant. */
+export interface ClientsGrant {
+  id: string;
+  role: ClientsRole;
+  /** `current` is false where they have left, not started or are suspended. */
+  holder: ClientsPerson & { current: boolean };
+  grantedBy: ClientsPerson;
+  grantedAt: string;
+}
+
+/** Who holds which clients role, and who could. A portal System Administrator's alone. */
+export interface ClientsRoles {
+  today: string;
+  /** BD managers first, then by surname. */
+  grants: ClientsGrant[];
+  /** Everybody at the company today, by surname. */
+  people: ClientsPerson[];
+}
+
+/**
+ * The roles screen. Refused with a 403 to anybody holding a clients role who is not a System
+ * Administrator, and with a 404 to everybody else: the server decides, this only asks.
+ */
+export async function clientsRoles(): Promise<ClientsRoles> {
+  return request<ClientsRoles>('GET', '/api/clients/roles');
+}
+
+export async function grantClientsRole(employeeId: string, role: ClientsRole): Promise<void> {
+  await request<unknown>('POST', '/api/clients/roles', { employeeId, role });
+}
+
+/** Ends a grant. It stays on the record as withdrawn, by whoever pressed the button. */
+export async function endClientsRole(grantId: string): Promise<void> {
+  await request<unknown>('DELETE', `/api/clients/roles/${encodeURIComponent(grantId)}`);
 }

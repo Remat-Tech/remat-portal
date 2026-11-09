@@ -162,6 +162,20 @@ describe('an actor is derived, never accepted', () => {
 
     expect(reading.map(({ file }) => file)).toEqual([]);
   });
+
+  /**
+   * Nor in clients, for the same reason. #274, Clients SRS CLI 94: its two roles are granted by
+   * a portal System Administrator, known by `isSysAdmin`, and are its own vocabulary.
+   */
+  it("and nothing in clients reads Rota's roles", () => {
+    const reading = sources.filter(
+      ({ file, code }) =>
+        file.startsWith('apps/clients/') &&
+        /\.roles\b|\bholdsAny\b|\bRoleCode\b|\b(HR_OFFICER|HR_ADMIN|SYS_ADMIN)\b/.test(code),
+    );
+
+    expect(reading.map(({ file }) => file)).toEqual([]);
+  });
 });
 
 describe('a System Administrator is one by the portal session', () => {

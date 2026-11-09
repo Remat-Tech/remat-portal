@@ -68,6 +68,15 @@ module.exports = {
       to: { path: '^server/src/core/identity/role/' },
     },
     {
+      name: 'clients-not-to-roles',
+      comment:
+        "Clients asks actor.isSysAdmin and never reads Rota's role codes, as compliance. #274. " +
+        'The rest of that rule, which no import shows, is in tests/unit/one-actor.test.ts.',
+      severity: 'error',
+      from: { path: '^server/src/apps/clients/' },
+      to: { path: '^server/src/core/identity/role/' },
+    },
+    {
       name: 'not-to-composition-root',
       comment: 'Only main.ts and app.ts assemble everything; nothing imports them back.',
       severity: 'error',

@@ -15,6 +15,8 @@ import { ApprovalDelegationRepository } from './apps/leave/leave-request/delegat
 import { AttachmentRepository } from './apps/leave/leave-request/attachment.db.js';
 import { CoverRepository } from './apps/leave/cover/cover.db.js';
 import { PhotoRepository } from './apps/directory/photo.db.js';
+import { ClientsRoleRepository } from './apps/clients/role.db.js';
+import { ClientsLeavers, summaryOfLeaversSwept } from './apps/clients/leavers.js';
 import { AttachmentLinkRepository } from './apps/leave/leave-request/attachment-link.db.js';
 import { LeaveDecisionRepository } from './apps/leave/leave-request/leave-decision.db.js';
 import { LeaveRequestDraftRepository } from './apps/leave/leave-request/draft.db.js';
@@ -285,6 +287,15 @@ const directoryEmails = new DirectoryEmailService(
  * tab and the job that moves a leaver's reports, so every one of them tells the directory's emails.
  * The leave service is what a moved report's pending requests follow. FR 07.
  */
+/**
+ * #274. Clients, which is still being built and so is nowhere in production: neither its routes
+ * (see app.ts), nor its part in a leaver's exit, nor its hourly sweep. One repository, shared by
+ * all three, so the grants a leaver loses are the grants the routes read.
+ */
+const CLIENTS_IS_OPEN = process.env.NODE_ENV !== 'production';
+const clientsRoles = new ClientsRoleRepository(db);
+const clientsLeavers = new ClientsLeavers(guard, clientsRoles, employees);
+
 const employeeRecords = new EmployeeService(
   employees,
   departments,
@@ -292,7 +303,8 @@ const employeeRecords = new EmployeeService(
   guard,
   leaveRequests,
   {
-    subscribers: [directoryEmails],
+    /* CLI 95: a leaver's clients grants end with the change that says they have left. */
+    subscribers: CLIENTS_IS_OPEN ? [directoryEmails, clientsLeavers] : [directoryEmails],
   },
 );
 
@@ -349,6 +361,8 @@ const app = buildApp({
   directoryEmails,
   /** #226. Who covers for somebody on leave. */
   covers: new CoverRepository(db),
+  /** #274. Who holds a clients role. Its routes are mounted outside production only. */
+  clientsRoles,
   /* Resolved here as well as inside buildApp, so that a missing secret stops the process
      before a socket is opened rather than while the first request is being served. */
   secret: sessionSecretFrom(),
@@ -520,6 +534,18 @@ const leaverTimer = every(HOUR_MS, () =>
   ),
 );
 
+/* #274, CLI 95. Hourly, with the leavers' reports: an exit recorded ahead of time ends nothing
+   when it is recorded, so a leaver's clients grants end within the hour after their last day. */
+const clientsLeaversTimer = every(HOUR_MS, () =>
+  runJob('clients-leavers', async () =>
+    CLIENTS_IS_OPEN
+      ? summaryOfLeaversSwept(
+          await clientsLeavers.sweep(theSystem("ending leavers' clients roles")),
+        )
+      : undefined,
+  ),
+);
+
 /* FR 59. Every minute, the shortest backoff. */
 const deliveryTimer = every(MINUTE_MS, () =>
   runJob('notification-retry', async () => {
@@ -588,6 +614,7 @@ function shutDown(signal: string): void {
   clearInterval(dailyTimer);
   clearInterval(reminderTimer);
   clearInterval(leaverTimer);
+  clearInterval(clientsLeaversTimer);
   clearInterval(deliveryTimer);
   clearInterval(directoryEmailTimer);
   clearInterval(outboxTimer);
