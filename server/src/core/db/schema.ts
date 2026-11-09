@@ -680,8 +680,27 @@ export interface EmailOptOutTable {
   opted_out_at: ColumnType<Date, never, never>;
 }
 
+/**
+ * A clients grant: BD manager or associate. #274, Clients TDD 4.8.
+ *
+ * Granted once and ended once; nothing else about a row ever changes, and none is deleted.
+ * lms_app may update the three `ended_` columns and nothing else.
+ */
+export interface ClientsRoleTable {
+  id: Generated<string>;
+  employee_id: ColumnType<string, string, never>;
+  role: ColumnType<string, string, never>;
+  granted_by: ColumnType<string, string, never>;
+  granted_at: ColumnType<Date, never, never>;
+  ended_at: ColumnType<Date | null, never, Date>;
+  ended_by: ColumnType<string | null, never, string | null>;
+  ended_reason: ColumnType<string | null, never, string>;
+}
+
 export interface Database {
   app_user: AppUserTable;
+  /** #274. */
+  clients_role: ClientsRoleTable;
   /** FR 49. */
   approval_delegation: ApprovalDelegationTable;
   /** NFR SEC 04. */

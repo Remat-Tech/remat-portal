@@ -316,18 +316,6 @@ a.portal-app:hover {
   box-shadow: var(--shadow);
 }
 
-/* An app still being built: shown on the portal in a build, but not a link. */
-.portal-app.is-soon {
-  color: var(--ink-soft);
-}
-
-.portal-app small {
-  margin-left: auto;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--ink-faint);
-}
-
 .portal-mark {
   flex: none;
   width: 2.75rem;
@@ -1224,6 +1212,29 @@ a.portal-app:hover {
   border-bottom-color: var(--accent);
   color: var(--ink);
   font-weight: 600;
+}
+
+/* ------------------------------------------------------------------- clients, #274 */
+
+.clients .directory-table td small {
+  display: block;
+  color: var(--ink-faint);
+  font-size: 0.8125rem;
+}
+
+.clients .directory-table td small.clients-gone {
+  color: var(--warn);
+}
+
+/* The person takes the room; the role and the button keep their size. */
+.clients-grant > label:first-child {
+  flex: 3 1 16rem;
+}
+
+.clients-end {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
 }
 
 /* ------------------------------------------------------- HR's Administration tab */

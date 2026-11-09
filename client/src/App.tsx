@@ -5,6 +5,7 @@ import {
   type Me,
   msSinceLastRequest,
   mySections,
+  visibleApps,
   signOut,
   type Year,
 } from './api';
@@ -104,9 +105,9 @@ const YEAR_SCOPED = new Set<Screen>(['balances', 'calendar']);
 const DEFAULT_SCREEN: Screen = 'home';
 
 /**
- * Clients is still being built: it opens under `npm run web` and nowhere else. In a build its
- * card says "Coming soon" and its address falls back to the portal, as the directory's did
- * until it went live. Its server routes, when they exist, stay unmounted in production too.
+ * Clients is still being built: it opens under `npm run web` and nowhere else. In a build there
+ * is no card at all and its address falls back to the portal. Its server routes, and its entry in
+ * `/api/me/apps`, are left out of production on the same terms.
  */
 const CLIENTS_OPEN = import.meta.env.DEV;
 
@@ -139,6 +140,12 @@ export function App() {
   const [ended, setEnded] = useState<string | undefined>(undefined);
   /** The server's answer, not this page's. Empty until it has answered. */
   const [sections, setSections] = useState<string[]>([]);
+  /**
+   * The apps that are only some people's which this person may see: `clients`, or nothing.
+   * The server's answer, from each app's own policy (#274). Empty until it has answered, so a
+   * tile that is not theirs is never drawn and then taken away.
+   */
+  const [apps, setApps] = useState<string[]>([]);
 
   /**
    * The leave year, held here rather than on each screen.
@@ -165,12 +172,19 @@ export function App() {
       .then(async (who) => {
         setMe(who);
         setEnded(undefined);
-        // A rail without the hub is better than a rail that guesses at one.
-        setSections(await mySections().catch(() => []));
+        // A rail without the hub is better than a rail that guesses at one. And a portal home
+        // without a tile is better than one that guesses at it.
+        const [mine, visible] = await Promise.all([
+          mySections().catch(() => []),
+          visibleApps().catch(() => []),
+        ]);
+        setSections(mine);
+        setApps(visible);
       })
       .catch(() => {
         setMe(undefined);
         setSections([]);
+        setApps([]);
       })
       .finally(() => {
         setAsked(true);
@@ -185,6 +199,7 @@ export function App() {
     window.location.replace('#/');
     setMe(undefined);
     setSections([]);
+    setApps([]);
     setEnded(undefined);
   }, []);
 
@@ -192,8 +207,32 @@ export function App() {
   const ranOut = useCallback(() => {
     setMe(undefined);
     setSections([]);
+    setApps([]);
     setEnded(SESSION_ENDED);
   }, []);
+
+  /* Asked again on every return to the portal home, so a role granted or ended while somebody
+     is signed in shows on their next visit there rather than at their next sign in. Kept on a
+     failure: a tile the server said yes to a moment ago is still the best guess. */
+  const atHome = me !== undefined && screen === 'home';
+
+  useEffect(() => {
+    if (!atHome) {
+      return;
+    }
+
+    let current = true;
+
+    void visibleApps()
+      .then((visible) => {
+        if (current) setApps(visible);
+      })
+      .catch(() => undefined);
+
+    return () => {
+      current = false;
+    };
+  }, [atHome]);
 
   /* The server ends the session after an hour with no request; this takes the screen back to
      sign in when that happens, rather than leaving it looking signed in until the next click. */
@@ -256,12 +295,17 @@ export function App() {
     return <ChangePassword onChanged={ask} />;
   }
 
-  if (screen === 'home') {
+  /* #274. Clients is only some people's: there for whoever the server says, and absent for
+     everybody else, its address included. In a build it is nobody's until it goes live, and the
+     server, which does not register it there, never names it either. */
+  const clientsTile = CLIENTS_OPEN && apps.includes('clients');
+
+  if (screen === 'home' || (screen === 'clients' && !clientsTile)) {
     return (
       <PortalHome
         me={me}
         initials={initialsOf(me)}
-        clientsOpen={CLIENTS_OPEN}
+        clients={clientsTile}
         onSignOut={() => {
           void signOut().finally(forget);
         }}
@@ -270,7 +314,7 @@ export function App() {
   }
 
   if (screen === 'clients') {
-    return <ClientsPage />;
+    return <ClientsPage onSignedOut={ranOut} />;
   }
 
   if (screen === 'directory') {

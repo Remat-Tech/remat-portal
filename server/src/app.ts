@@ -77,6 +77,12 @@ import { CoverService } from './apps/leave/cover/cover.service.js';
 import { coverRoutes } from './apps/leave/cover/routes.js';
 import { DirectoryService } from './apps/directory/directory.service.js';
 import { type DirectoryLimits, directoryRoutes } from './apps/directory/routes.js';
+import { clientsRoutes } from './apps/clients/routes.js';
+import type { ClientsRoleRepository } from './apps/clients/role.db.js';
+import { RoleService } from './apps/clients/role.service.js';
+import { clientsVisibility } from './apps/clients/visibility.js';
+import { clientsDoor } from './apps/clients/door.js';
+import { portalRoutes } from './core/portal/routes.js';
 import type { PhotoRepository } from './apps/directory/photo.db.js';
 import type { DirectoryEmailService } from './apps/directory/email.service.js';
 import type { EmailOutbox } from './core/notification/outbox.service.js';
@@ -86,7 +92,7 @@ import { AdministrationService } from './apps/directory/administration.service.j
 import type { EmployeeService } from './core/organisation/employee/employee.service.js';
 import type { WorkPatternRepository } from './core/calendar/work-pattern/work-pattern.db.js';
 import { identify, insistOnANewPassword } from './core/http/identify.js';
-import { answerProblems, type FailureLog } from './core/http/problems.js';
+import { answerProblems, type FailureLog, NO_SUCH_ROUTE } from './core/http/problems.js';
 import { requestRoutes } from './apps/leave/leave-request/routes.js';
 import { publicSessionRoutes, signedInSessionRoutes } from './apps/leave/session/session.routes.js';
 import { sessionSecretFrom } from './core/identity/sign-in/session-cookie.routes.js';
@@ -201,6 +207,11 @@ export interface Application {
   covers?: CoverRepository;
   /** How much one person may ask of the directory. `DIRECTORY_LIMITS` when not given. */
   directoryLimits?: DirectoryLimits;
+  /**
+   * #274. Who holds a clients role. Optional, so a test app without it has no clients routes.
+   * Mounted outside production only, while clients is being built.
+   */
+  clientsRoles?: ClientsRoleRepository;
   /** Where a 500 is written down. */
   failures?: FailureLog;
   /** Read from `SESSION_SECRET` when not given. */
@@ -524,6 +535,32 @@ export function buildApp(parts: Application): Express {
     }),
   );
 
+  /* Clients, the business development pipeline. #274.
+
+     Still being built, so not mounted in production: `/api/clients` answers 404 there until it
+     goes live, as the directory's did. The client hides the screen on the same terms. */
+  const clientsRoles = process.env.NODE_ENV === 'production' ? undefined : parts.clientsRoles;
+
+  if (clientsRoles !== undefined) {
+    app.use(
+      '/api',
+      clientsRoutes({
+        door: clientsDoor(parts.guard, clientsRoles),
+        roles: new RoleService(parts.guard, clientsRoles, parts.employees),
+      }),
+    );
+  }
+
+  /* #274. Which tiles are only some people's, and whether this person has them. Clients is the
+     only one, and is registered on the same terms as its routes: where they are not mounted, its
+     tile is nobody's. */
+  app.use(
+    '/api',
+    portalRoutes({
+      apps: clientsRoles === undefined ? [] : [clientsVisibility(parts.guard, clientsRoles)],
+    }),
+  );
+
   /* Who was sent which email and what became of it. An HR Administrator's and a System
      Administrator's, which `outboxPolicy` decides rather than the mounting. */
   if (parts.outbox !== undefined) {
@@ -625,9 +662,7 @@ export function buildApp(parts: Application): Express {
   );
 
   app.use('/api', (_request: Request, response: Response) => {
-    response
-      .status(404)
-      .json({ error: 'NoSuchRoute', message: 'There is nothing at that address.' });
+    response.status(404).json(NO_SUCH_ROUTE);
   });
 
   app.use(answerProblems(parts.failures));
