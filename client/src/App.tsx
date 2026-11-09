@@ -13,6 +13,7 @@ import { ApprovalsPage } from './features/approvals/ApprovalsPage';
 import { AuditLogPage } from './features/audit/AuditLogPage';
 import { BalancesPage } from './features/balances/BalancesPage';
 import { CalendarPage } from './features/calendar/CalendarPage';
+import { ClientsPage } from './features/clients/ClientsPage';
 import { ApprovalChainsPage } from './features/config/ApprovalChainsPage';
 import { BalanceAdjustmentsPage } from './features/config/BalanceAdjustmentsPage';
 import { EmailWordingPage } from './features/config/EmailWordingPage';
@@ -80,9 +81,9 @@ const HR_HUB = { id: 'hr', label: 'HR settings', icon: 'settings' } as const;
 type MainScreen = (typeof MAIN_SCREENS)[number]['id'];
 /**
  * The portal's front page, at `#/`, and the directory, at `#/directory` and
- * `#/directory/<id>`, both outside Rota's shell.
+ * `#/directory/<id>`, and clients, at `#/clients`, all outside Rota's shell.
  */
-type Screen = 'home' | 'directory' | MainScreen | typeof HR_HUB.id | HrSectionId;
+type Screen = 'home' | 'directory' | 'clients' | MainScreen | typeof HR_HUB.id | HrSectionId;
 
 const HR_SECTIONS = HR_GROUPS.flatMap((group) => group.sections);
 
@@ -101,6 +102,13 @@ const YEAR_SCOPED = new Set<Screen>(['balances', 'calendar']);
 
 /** Where signing in lands, and where an unknown address falls back to. */
 const DEFAULT_SCREEN: Screen = 'home';
+
+/**
+ * Clients is still being built: it opens under `npm run web` and nowhere else. In a build its
+ * card says "Coming soon" and its address falls back to the portal, as the directory's did
+ * until it went live. Its server routes, when they exist, stay unmounted in production too.
+ */
+const CLIENTS_OPEN = import.meta.env.DEV;
 
 /** Rota's first screen, which the portal's Rota card opens. */
 const ROTA_HOME: Screen = 'balances';
@@ -225,7 +233,13 @@ export function App() {
 
   useEffect(() => {
     document.title =
-      screen === 'home' ? 'Remat Portal' : screen === 'directory' ? 'Directory' : 'Rota';
+      screen === 'home'
+        ? 'Remat Portal'
+        : screen === 'directory'
+          ? 'Directory'
+          : screen === 'clients'
+            ? 'Clients'
+            : 'Rota';
   }, [screen]);
 
   if (!asked) {
@@ -247,11 +261,16 @@ export function App() {
       <PortalHome
         me={me}
         initials={initialsOf(me)}
+        clientsOpen={CLIENTS_OPEN}
         onSignOut={() => {
           void signOut().finally(forget);
         }}
       />
     );
+  }
+
+  if (screen === 'clients') {
+    return <ClientsPage />;
   }
 
   if (screen === 'directory') {
@@ -459,6 +478,10 @@ function screenInTheAddress(): Screen {
   // The directory carries the person after a slash; which one is the page's to read.
   if (named === 'directory' || named.startsWith('directory/')) {
     return 'directory';
+  }
+
+  if (CLIENTS_OPEN && (named === 'clients' || named.startsWith('clients/'))) {
+    return 'clients';
   }
 
   // `#/`, an empty hash and anything unknown all land on the portal.
