@@ -73,7 +73,7 @@ export function isAnId(value: string): boolean {
 
 /** The name is somebody else's already, ignoring case and spaces. */
 export class ClientsNameTaken extends Error {
-  constructor(what: 'line' | 'product', name: string) {
+  constructor(what: 'line' | 'product' | 'client type', name: string) {
     super(
       `There is already a ${what} called ${name}. Each ${what} is named once, so that it is ` +
         'the same everywhere it is chosen.',

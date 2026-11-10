@@ -1952,6 +1952,212 @@ a.portal-app:hover {
   text-align: right;
 }
 
+/* ------------------------------------------------------ clients themselves, #276 */
+
+/* A field nobody has filled in, said by name in a quieter voice: plainly missing, not blank, and
+   not mistaken for something somebody wrote (CLI 06). */
+.clients-missing {
+  color: var(--ink-faint);
+  font-style: italic;
+}
+
+.clients-field textarea {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  font: inherit;
+  resize: vertical;
+}
+
+.clients-field textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Buttons that carry an icon before their words. */
+.clients-setup-head button,
+.clients-part-head button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.clients-setup-head button svg,
+.clients-part-head button svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.clients-list .filter-bar input {
+  width: min(100%, 22rem);
+}
+
+.clients-list .directory-table a {
+  font-weight: 600;
+}
+
+/* One client. */
+.clients-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: var(--gap);
+  color: var(--ink-soft);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.clients-back:hover {
+  color: var(--ink);
+}
+
+.clients-back svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.clients-client .clients-setup-head h2 {
+  overflow-wrap: anywhere;
+}
+
+/* Its owner and note, as a short card of labelled facts. */
+.clients-details {
+  display: grid;
+  gap: 0.9rem;
+  margin: 0 0 var(--gap-lg);
+  padding: 1rem 1.1rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.clients-details > div {
+  display: grid;
+  grid-template-columns: 8rem minmax(0, 1fr);
+  gap: var(--gap);
+}
+
+.clients-details dt {
+  color: var(--ink-faint);
+  font-weight: 600;
+}
+
+.clients-details dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+.clients-note {
+  white-space: pre-line;
+}
+
+/* Contacts, and the products it uses: each a heading and a card of rows. */
+.clients-part {
+  margin-bottom: var(--gap-lg);
+}
+
+.clients-part-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap);
+  margin-bottom: 0.75rem;
+}
+
+.clients-part-head h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.clients-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.clients-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem var(--gap);
+  padding: 0.8rem 1.1rem;
+}
+
+.clients-row + .clients-row {
+  border-top: 1px solid var(--line);
+}
+
+.clients-row-main,
+.clients-row-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.clients-row-main small {
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+}
+
+.clients-row-meta {
+  font-size: 0.9375rem;
+}
+
+.clients-row-meta .tag {
+  align-self: flex-start;
+}
+
+/* A former contact, or a product they stopped using: still there, quieter. */
+.clients-row.is-ended .clients-row-main strong {
+  color: var(--ink-soft);
+}
+
+.clients-row > .notice {
+  grid-column: 1 / -1;
+}
+
+.clients-removed {
+  margin-top: 0.75rem;
+}
+
+.clients-removed summary {
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.clients-removed .clients-rows {
+  margin-top: 0.6rem;
+}
+
+.clients-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.1rem;
+  font-weight: 500;
+}
+
+/* On a phone each row stacks: who, then how to reach them, then the buttons. */
+@media (max-width: 760px) {
+  .clients-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .clients-details > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.2rem;
+  }
+}
+
 /* ------------------------------------------------------- HR's Administration tab */
 
 .admin-heading {

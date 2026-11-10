@@ -715,8 +715,67 @@ export interface ClientsProductTable {
   retired_on: string | null;
 }
 
+/**
+ * What kind of institution a client is: Bank, Broker. #276. Added as the department needs,
+ * renamed and retired, never deleted.
+ */
+export interface ClientsClientTypeTable {
+  id: Generated<string>;
+  name: string;
+  retired_on: string | null;
+}
+
+/**
+ * A client: a bank, broker or lender the department sells to. #276. Its name, type, owner and
+ * note change; when it was created does not, and none is deleted.
+ */
+export interface ClientsClientTable {
+  id: Generated<string>;
+  name: string;
+  type_id: string;
+  owner_id: string;
+  note: string | null;
+  created_at: ColumnType<Date, never, never>;
+}
+
+/**
+ * Somebody the department deals with at a client. #276. Corrected and removed by anybody with a
+ * clients role; never moved to another client, and never deleted.
+ */
+export interface ClientsContactTable {
+  id: Generated<string>;
+  client_id: ColumnType<string, string, never>;
+  name: string;
+  job_title: string | null;
+  email: string | null;
+  phone: string | null;
+  created_at: ColumnType<Date, never, never>;
+  removed_at: ColumnType<Date | null, never, Date | null>;
+}
+
+/**
+ * A product a client already uses, from a date. #276, Clients SRS CLI 04, TDD 4.1. Its dates are
+ * corrected; which client and product never change, and none is deleted.
+ */
+export interface ClientsClientProductTable {
+  id: Generated<string>;
+  client_id: ColumnType<string, string, never>;
+  product_id: ColumnType<string, string, never>;
+  since_on: string;
+  ended_on: string | null;
+  won_by: ColumnType<string | null, string | null | undefined, never>;
+}
+
 export interface Database {
   app_user: AppUserTable;
+  /** #276. */
+  clients_client_product: ClientsClientProductTable;
+  /** #276. */
+  clients_contact: ClientsContactTable;
+  /** #276. */
+  clients_client: ClientsClientTable;
+  /** #276. */
+  clients_client_type: ClientsClientTypeTable;
   /** #293. */
   clients_product: ClientsProductTable;
   /** #293. */

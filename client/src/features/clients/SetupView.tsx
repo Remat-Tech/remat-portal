@@ -1,8 +1,10 @@
 import { type ReactNode, useCallback, useEffect, useId, useRef, useState } from 'react';
 import {
   ApiError,
+  addClientType,
   addProduct,
   addProductLine,
+  type ClientType,
   type ClientsProduct,
   type ClientsProductLine,
   isNotSignedIn,
@@ -10,11 +12,13 @@ import {
   renameSetupThing,
   retireOrRestore,
   type SetupThing,
+  setupClientTypes,
 } from '../../api';
 import { EditButton } from '../../ActionButtons';
 import { day } from '../../format';
 import { Icon, type IconName } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
+import { Dialog, Field, InfoTip, useAddress } from './ui';
 
 /**
  * Setup, for a BD manager: a menu of its sections down the side, and the one chosen beside it.
@@ -25,8 +29,10 @@ import { Notice, type Problem, problemFrom } from '../../problem';
  * server to anybody else, whatever is drawn.
  */
 export function SetupView({ onSignedOut }: { onSignedOut: () => void }) {
-  /* Products is the one section built so far. */
-  const current: SetupSection = 'products';
+  /* Which section the address names; anything it does not know is products. */
+  const address = useAddress();
+  const current: SetupSection =
+    address === 'clients/setup/client-types' ? 'client-types' : 'products';
 
   return (
     <div className="clients-setup">
@@ -56,12 +62,16 @@ export function SetupView({ onSignedOut }: { onSignedOut: () => void }) {
         </ul>
       </nav>
 
-      <ProductsSection onSignedOut={onSignedOut} />
+      {current === 'client-types' ? (
+        <ClientTypesSection onSignedOut={onSignedOut} />
+      ) : (
+        <ProductsSection onSignedOut={onSignedOut} />
+      )}
     </div>
   );
 }
 
-type SetupSection = 'products' | 'checklists' | 'reasons';
+type SetupSection = 'products' | 'client-types' | 'checklists' | 'reasons';
 
 /**
  * Each section of setup, in the order a BD manager is likely to want them. `built` turns to true
@@ -74,6 +84,7 @@ const SECTIONS: readonly {
   built: boolean;
 }[] = [
   { id: 'products', label: 'Products', icon: 'list', built: true },
+  { id: 'client-types', label: 'Client types', icon: 'people', built: true },
   { id: 'checklists', label: 'Checklists', icon: 'checklist', built: false },
   { id: 'reasons', label: 'Lost and exit reasons', icon: 'exit-reasons', built: false },
 ];
@@ -382,7 +393,7 @@ function Row({
   const [editing, setEditing] = useState(false);
   const [asking, setAsking] = useState(false);
   const isLine = heading !== undefined;
-  const what = isLine ? 'line' : 'product';
+  const what = thing === 'client-types' ? 'client type' : isLine ? 'line' : 'product';
 
   return (
     <div className={isLine ? 'clients-line-head' : 'clients-product'}>
@@ -739,145 +750,7 @@ function AddMenu({
   );
 }
 
-/**
- * An info icon whose text appears beside it: on hover, on keyboard focus, and on a tap, since a
- * phone has no hover. A screen reader is given the text as the button's description, so it is
- * read whether or not it is shown. Escape, or a tap elsewhere, puts it away.
- */
-function InfoTip({ text }: { text: string }) {
-  const [open, setOpen] = useState(false);
-  const tipId = useId();
-
-  return (
-    <span className={`clients-info${open ? ' is-open' : ''}`}>
-      <button
-        type="button"
-        className="clients-info-button"
-        aria-label="About this page"
-        aria-describedby={tipId}
-        aria-expanded={open}
-        onClick={() => {
-          setOpen((was) => !was);
-        }}
-        onBlur={() => {
-          setOpen(false);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape') {
-            setOpen(false);
-          }
-        }}
-      >
-        <Icon name="info" />
-      </button>
-      <span id={tipId} role="tooltip" className="clients-info-tip">
-        {text}
-      </span>
-    </span>
-  );
-}
-
 /* ---------------------------------------------------------------- adding, in a dialog */
-
-/**
- * A dialog over the page, for adding one thing. The browser's own `<dialog>`: it keeps focus
- * inside while open, closes on Escape, and hands focus back to the button that opened it.
- * Clicking the shaded page around it closes it too.
- */
-function Dialog({
-  title,
-  intro,
-  onClose,
-  children,
-}: {
-  title: string;
-  intro: string;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  const dialog = useRef<HTMLDialogElement | null>(null);
-  const titleId = useId();
-
-  useEffect(() => {
-    const element = dialog.current;
-
-    if (element !== null && !element.open) {
-      element.showModal();
-    }
-
-    return () => {
-      element?.close();
-    };
-  }, []);
-
-  return (
-    <dialog
-      ref={dialog}
-      className="clients-dialog"
-      aria-labelledby={titleId}
-      onCancel={(event) => {
-        /* Escape. Closed by the page, so the page's state and the dialog never disagree. */
-        event.preventDefault();
-        onClose();
-      }}
-      onClick={(event) => {
-        /* Only the shade around the panel is the dialog itself; the panel fills the rest. */
-        if (event.target === dialog.current) {
-          onClose();
-        }
-      }}
-    >
-      <div className="clients-dialog-panel">
-        <header className="clients-dialog-head">
-          <h2 id={titleId}>{title}</h2>
-          <button type="button" className="iconic" aria-label="Close" onClick={onClose}>
-            <Icon name="cross" />
-          </button>
-        </header>
-        <p className="muted">{intro}</p>
-        {children}
-      </div>
-    </dialog>
-  );
-}
-
-/** A labelled field, its hint, and the server's sentence when it is about this field. */
-function Field({
-  label,
-  hint,
-  error,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  error?: string;
-  children: (ids: { id: string; describedBy: string | undefined }) => ReactNode;
-}) {
-  const id = useId();
-  const hintId = `${id}-hint`;
-  const errorId = `${id}-error`;
-  const describedBy =
-    [hint === undefined ? null : hintId, error === undefined ? null : errorId]
-      .filter((one) => one !== null)
-      .join(' ') || undefined;
-
-  return (
-    <div className={`clients-field${error === undefined ? '' : ' has-error'}`}>
-      <label htmlFor={id}>{label}</label>
-      {children({ id, describedBy })}
-      {hint === undefined ? null : (
-        <p id={hintId} className="clients-field-hint">
-          {hint}
-        </p>
-      )}
-      {error === undefined ? null : (
-        <p id={errorId} className="clients-field-error" role="alert">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
 
 /**
  * Sending one add, and what came of it: busy while it runs, closed when it is done, and the
@@ -1078,6 +951,173 @@ function AddProductDialog({
             disabled={adding.busy || name.trim() === '' || lineId === ''}
           >
             {adding.busy ? 'Adding…' : 'Add product'}
+          </button>
+        </footer>
+      </form>
+    </Dialog>
+  );
+}
+
+/* ----------------------------------------------------------------- client types, #276 */
+
+/**
+ * The kinds of institution a client may be. A list rather than a fixed five, so that a kind the
+ * department starts selling to is added here and not by a developer. A retired type is no
+ * longer offered for new clients; a client of it keeps it.
+ */
+function ClientTypesSection({ onSignedOut }: { onSignedOut: () => void }) {
+  const [types, setTypes] = useState<ClientType[] | undefined>(undefined);
+  const [problem, setProblem] = useState<Problem | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(false);
+
+  const load = useCallback(() => {
+    setupClientTypes()
+      .then((found) => {
+        setTypes(found);
+      })
+      .catch((error: unknown) => {
+        if (isNotSignedIn(error)) {
+          onSignedOut();
+          return;
+        }
+        setProblem(problemFrom(error));
+      });
+  }, [onSignedOut]);
+
+  useEffect(load, [load]);
+
+  const act = useCallback(
+    async (change: () => Promise<void>): Promise<boolean> => {
+      setBusy(true);
+      setProblem(undefined);
+
+      try {
+        await change();
+        load();
+        return true;
+      } catch (error: unknown) {
+        if (isNotSignedIn(error)) {
+          onSignedOut();
+        } else {
+          setProblem(problemFrom(error));
+        }
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [load, onSignedOut],
+  );
+
+  return (
+    <section className="clients-setup-body">
+      <header className="clients-setup-head">
+        <h2>
+          Client types
+          <InfoTip text="What kind of institution a client is. A retired type is no longer offered for new clients, and every client already of it keeps it." />
+        </h2>
+
+        <button
+          type="button"
+          className="primary"
+          disabled={busy}
+          onClick={() => {
+            setAdding(true);
+          }}
+        >
+          <Icon name="plus" />
+          Add a type
+        </button>
+      </header>
+
+      {adding ? (
+        <AddClientTypeDialog
+          onAdded={load}
+          onSignedOut={onSignedOut}
+          onClose={() => {
+            setAdding(false);
+          }}
+        />
+      ) : null}
+
+      {problem === undefined ? null : <Notice problem={problem} />}
+
+      {types === undefined ? null : (
+        <div className="clients-line is-open">
+          {types.map((type) => (
+            <Row
+              key={type.id}
+              thing="client-types"
+              id={type.id}
+              name={type.name}
+              retiredOn={type.retiredOn}
+              busy={busy}
+              act={act}
+              reload={load}
+              onSignedOut={onSignedOut}
+            />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function AddClientTypeDialog({
+  onAdded,
+  onClose,
+  onSignedOut,
+}: {
+  onAdded: () => void;
+  onClose: () => void;
+  onSignedOut: () => void;
+}) {
+  const [name, setName] = useState('');
+  const adding = useAdding(onAdded, onClose, onSignedOut);
+
+  return (
+    <Dialog
+      title="Add a client type"
+      intro="Once added, it can be chosen for new clients straight away."
+      onClose={onClose}
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          adding.send(() => addClientType(name));
+        }}
+      >
+        <Field
+          label="Type name"
+          hint="As it should read everywhere, for example Insurance company."
+          error={adding.nameError}
+        >
+          {({ id, describedBy }) => (
+            <input
+              id={id}
+              value={name}
+              maxLength={60}
+              autoFocus
+              autoComplete="off"
+              aria-describedby={describedBy}
+              aria-invalid={adding.nameError === undefined ? undefined : true}
+              disabled={adding.busy}
+              onChange={(event) => {
+                setName(event.target.value);
+              }}
+            />
+          )}
+        </Field>
+
+        {adding.other === undefined ? null : <Notice problem={adding.other} />}
+
+        <footer className="clients-dialog-foot">
+          <button type="button" disabled={adding.busy} onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="primary" disabled={adding.busy || name.trim() === ''}>
+            {adding.busy ? 'Adding…' : 'Add type'}
           </button>
         </footer>
       </form>
