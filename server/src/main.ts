@@ -16,6 +16,7 @@ import { AttachmentRepository } from './apps/leave/leave-request/attachment.db.j
 import { CoverRepository } from './apps/leave/cover/cover.db.js';
 import { PhotoRepository } from './apps/directory/photo.db.js';
 import { ClientsRoleRepository } from './apps/clients/role.db.js';
+import { ClientsProductRepository } from './apps/clients/product.db.js';
 import { ClientsLeavers, summaryOfLeaversSwept } from './apps/clients/leavers.js';
 import { AttachmentLinkRepository } from './apps/leave/leave-request/attachment-link.db.js';
 import { LeaveDecisionRepository } from './apps/leave/leave-request/leave-decision.db.js';
@@ -363,6 +364,8 @@ const app = buildApp({
   covers: new CoverRepository(db),
   /** #274. Who holds a clients role. Its routes are mounted outside production only. */
   clientsRoles,
+  /** #293. */
+  clientsProducts: new ClientsProductRepository(db),
   /* Resolved here as well as inside buildApp, so that a missing secret stops the process
      before a socket is opened rather than while the first request is being served. */
   secret: sessionSecretFrom(),

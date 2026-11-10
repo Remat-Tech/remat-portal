@@ -1,43 +1,35 @@
 import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
-import {
-  ApiError,
-  type ClientsGrant,
-  type ClientsRole,
-  type ClientsRoles,
-  clientsRoles,
-  endClientsRole,
-  grantClientsRole,
-  isNotSignedIn,
-} from '../../api';
-import { RemoveButton } from '../../ActionButtons';
-import { momentDate } from '../../format';
+import { type ClientsViews, clientsViews, isNotSignedIn } from '../../api';
 import { Icon } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
+import { RolesView } from './RolesView';
+import { SetupView } from './SetupView';
 
 /**
- * Clients, the business development pipeline. #274.
+ * Clients, the business development pipeline. #274, #293.
  *
  * Reached only under `npm run web` while it is being built (see `CLIENTS_OPEN` in App.tsx); a
  * build has no card and sends `#/clients` back to the portal.
  *
- * Two views so far: the pipeline, which is still to come, at `#/clients`, and the roles screen
- * at `#/clients/roles`. The Roles tab is drawn only where the server answered the roles screen:
- * the page asks rather than decides, and the server refuses everybody else whatever is drawn.
+ * The views so far: the pipeline, still to come, at `#/clients`; setup, a BD manager's, at
+ * `#/clients/setup`; and roles, a System Administrator's, at `#/clients/roles`. Which tabs are
+ * drawn is the server's answer, from `/api/clients/me`: the page asks rather than decides, and
+ * every route refuses whoever it refuses whatever is drawn.
  */
 export function ClientsPage({ onSignedOut }: { onSignedOut: () => void }) {
   const view = useClientsView();
 
-  /* Undefined until the server has answered; null where it refused. */
-  const [roles, setRoles] = useState<ClientsRoles | null | undefined>(undefined);
+  /* Undefined until the server has answered. */
+  const [views, setViews] = useState<ClientsViews | undefined>(undefined);
   const [problem, setProblem] = useState<Problem | undefined>(undefined);
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
 
-    clientsRoles()
+    clientsViews()
       .then((found) => {
-        setRoles(found);
+        setViews(found);
         setProblem(undefined);
       })
       .catch((error: unknown) => {
@@ -45,14 +37,6 @@ export function ClientsPage({ onSignedOut }: { onSignedOut: () => void }) {
           onSignedOut();
           return;
         }
-
-        /* Not a System Administrator: there is no roles screen to show them. */
-        if (error instanceof ApiError && (error.status === 403 || error.status === 404)) {
-          setRoles(null);
-          setProblem(undefined);
-          return;
-        }
-
         setProblem(problemFrom(error));
       })
       .finally(() => {
@@ -62,7 +46,12 @@ export function ClientsPage({ onSignedOut }: { onSignedOut: () => void }) {
 
   useEffect(load, [load]);
 
-  const mayManageRoles = roles !== null && roles !== undefined;
+  /* For anybody without it, a view's address is the pipeline: the address says nothing about a
+     screen they cannot have, not even that it exists. */
+  const showing: ClientsView =
+    (view === 'setup' && views?.setUp === true) || (view === 'roles' && views?.manageRoles === true)
+      ? view
+      : 'pipeline';
 
   return (
     <div className="portal">
@@ -75,14 +64,21 @@ export function ClientsPage({ onSignedOut }: { onSignedOut: () => void }) {
           <h1>Clients</h1>
         </header>
 
-        {mayManageRoles ? (
+        {views?.setUp === true || views?.manageRoles === true ? (
           <nav className="directory-views" aria-label="Clients views">
-            <a href="#/clients" aria-current={view === 'pipeline' ? 'page' : undefined}>
+            <a href="#/clients" aria-current={showing === 'pipeline' ? 'page' : undefined}>
               Pipeline
             </a>
-            <a href="#/clients/roles" aria-current={view === 'roles' ? 'page' : undefined}>
-              Roles
-            </a>
+            {views.setUp ? (
+              <a href="#/clients/setup" aria-current={showing === 'setup' ? 'page' : undefined}>
+                Setup
+              </a>
+            ) : null}
+            {views.manageRoles ? (
+              <a href="#/clients/roles" aria-current={showing === 'roles' ? 'page' : undefined}>
+                Roles
+              </a>
+            ) : null}
           </nav>
         ) : null}
 
@@ -90,12 +86,13 @@ export function ClientsPage({ onSignedOut }: { onSignedOut: () => void }) {
           <Notice problem={problem} retrying={loading} onRetry={load} />
         )}
 
-        {/* For anybody the server refused, `#/clients/roles` is the pipeline: the address
-            says nothing about a screen they cannot have, not even that it exists. Blank only
-            while the server is still answering, so the pipeline does not flash first. */}
-        {view === 'roles' && mayManageRoles ? (
-          <RolesView roles={roles} onChanged={load} onSignedOut={onSignedOut} />
-        ) : view === 'roles' && roles === undefined ? null : (
+        {/* Blank while the server is still answering, so the pipeline does not flash in front
+            of the view the address asked for. */}
+        {views === undefined ? null : showing === 'setup' ? (
+          <SetupView onSignedOut={onSignedOut} />
+        ) : showing === 'roles' ? (
+          <RolesView onSignedOut={onSignedOut} />
+        ) : (
           <p>Clients is being built. The pipeline will open here.</p>
         )}
       </main>
@@ -103,214 +100,9 @@ export function ClientsPage({ onSignedOut }: { onSignedOut: () => void }) {
   );
 }
 
-const ROLE_NAMES: Record<ClientsRole, string> = {
-  BD_MANAGER: 'BD manager',
-  ASSOCIATE: 'Associate',
-};
+type ClientsView = 'pipeline' | 'setup' | 'roles';
 
-/** Who holds which role, a way to grant one, and a way to end each. CLI 94. */
-function RolesView({
-  roles,
-  onChanged,
-  onSignedOut,
-}: {
-  roles: ClientsRoles;
-  onChanged: () => void;
-  onSignedOut: () => void;
-}) {
-  const [employeeId, setEmployeeId] = useState('');
-  const [role, setRole] = useState<ClientsRole>('ASSOCIATE');
-  const [granting, setGranting] = useState(false);
-  const [problem, setProblem] = useState<Problem | undefined>(undefined);
-
-  const grant = () => {
-    setGranting(true);
-    setProblem(undefined);
-
-    grantClientsRole(employeeId, role)
-      .then(() => {
-        setEmployeeId('');
-        onChanged();
-      })
-      .catch((error: unknown) => {
-        if (isNotSignedIn(error)) {
-          onSignedOut();
-          return;
-        }
-        setProblem(problemFrom(error));
-      })
-      .finally(() => {
-        setGranting(false);
-      });
-  };
-
-  return (
-    <>
-      <p className="muted">
-        Granting a role lets somebody see clients. BD managers can also reassign work, read every
-        meeting report and keep the products and lists. Only a portal system administrator can grant
-        or end a role.
-      </p>
-
-      <form
-        className="filter-bar clients-grant"
-        onSubmit={(event) => {
-          event.preventDefault();
-          grant();
-        }}
-      >
-        <label>
-          <span className="visually-hidden">Person</span>
-          <select
-            value={employeeId}
-            disabled={granting}
-            required
-            onChange={(event) => {
-              setEmployeeId(event.target.value);
-            }}
-          >
-            <option value="">Choose somebody…</option>
-            {roles.people.map((person) => (
-              <option key={person.id} value={person.id}>
-                {person.name}
-                {person.jobTitle === null ? '' : `, ${person.jobTitle}`}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label>
-          <span className="visually-hidden">Role</span>
-          <select
-            value={role}
-            disabled={granting}
-            onChange={(event) => {
-              setRole(event.target.value as ClientsRole);
-            }}
-          >
-            <option value="ASSOCIATE">Associate</option>
-            <option value="BD_MANAGER">BD manager</option>
-          </select>
-        </label>
-
-        <button type="submit" className="primary" disabled={granting || employeeId === ''}>
-          {granting ? 'Granting…' : 'Grant the role'}
-        </button>
-      </form>
-
-      {problem === undefined ? null : <Notice problem={problem} />}
-
-      {roles.grants.length === 0 ? (
-        <div className="notice plain">
-          <p>Nobody holds a role in clients yet. Start with a BD manager.</p>
-        </div>
-      ) : (
-        <div className="directory-card">
-          <table className="directory-table">
-            <thead>
-              <tr>
-                <th scope="col">Person</th>
-                <th scope="col">Role</th>
-                <th scope="col">Granted</th>
-                <th scope="col">
-                  <span className="visually-hidden">End</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {roles.grants.map((grant) => (
-                <GrantRow
-                  key={grant.id}
-                  grant={grant}
-                  onChanged={onChanged}
-                  onSignedOut={onSignedOut}
-                />
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </>
-  );
-}
-
-function GrantRow({
-  grant,
-  onChanged,
-  onSignedOut,
-}: {
-  grant: ClientsGrant;
-  onChanged: () => void;
-  onSignedOut: () => void;
-}) {
-  const [asking, setAsking] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [problem, setProblem] = useState<Problem | undefined>(undefined);
-  const roleName = ROLE_NAMES[grant.role];
-
-  const end = () => {
-    setBusy(true);
-
-    endClientsRole(grant.id)
-      .then(onChanged)
-      .catch((error: unknown) => {
-        if (isNotSignedIn(error)) {
-          onSignedOut();
-          return;
-        }
-        setProblem(problemFrom(error));
-        setBusy(false);
-      });
-  };
-
-  return (
-    <tr>
-      <td>
-        {grant.holder.name}
-        {grant.holder.jobTitle === null ? null : <small> {grant.holder.jobTitle}</small>}
-        {grant.holder.current ? null : (
-          <small className="clients-gone"> Not at the company today</small>
-        )}
-      </td>
-      <td>{roleName}</td>
-      <td>
-        {momentDate(grant.grantedAt)}
-        <small> by {grant.grantedBy.name}</small>
-      </td>
-      <td className="clients-end">
-        {asking ? (
-          <>
-            <button type="button" className="linkish" disabled={busy} onClick={end}>
-              {busy ? 'Ending…' : 'End it'}
-            </button>{' '}
-            <button
-              type="button"
-              className="linkish"
-              disabled={busy}
-              onClick={() => {
-                setAsking(false);
-              }}
-            >
-              Keep it
-            </button>
-          </>
-        ) : (
-          <RemoveButton
-            label={`End ${grant.holder.name}'s ${roleName.toLowerCase()} role`}
-            onClick={() => {
-              setAsking(true);
-            }}
-          />
-        )}
-        {problem === undefined ? null : <Notice problem={problem} />}
-      </td>
-    </tr>
-  );
-}
-
-type ClientsView = 'pipeline' | 'roles';
-
-/** Which view the address names. Anything after `#/clients` that is not `roles` is the pipeline. */
+/** Which view the address names. Anything after `#/clients` it does not know is the pipeline. */
 function useClientsView(): ClientsView {
   return useSyncExternalStore(subscribe, viewInTheAddress, () => 'pipeline');
 }
@@ -326,5 +118,9 @@ function subscribe(changed: () => void): () => void {
 function viewInTheAddress(): ClientsView {
   const path = window.location.hash.replace(/^#\/?/, '').split('?')[0] ?? '';
 
-  return path === 'clients/roles' ? 'roles' : 'pipeline';
+  if (path === 'clients/roles') {
+    return 'roles';
+  }
+
+  return path === 'clients/setup' || path.startsWith('clients/setup/') ? 'setup' : 'pipeline';
 }

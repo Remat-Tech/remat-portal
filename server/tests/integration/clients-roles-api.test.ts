@@ -1,30 +1,18 @@
-import type { Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
-import express, { type NextFunction, type Request, type Response, type Router } from 'express';
+import type { Router } from 'express';
 import type { Kysely } from 'kysely';
 import { Client } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { databaseForThisFile } from '../setup/test-database.js';
 import { seed } from '../../seeds/seed.mjs';
-import { signedInAs } from '../../src/core/auth/actor.js';
-import { Guard } from '../../src/core/auth/policy.js';
 import { type Database, databaseFor } from '../../src/core/db/index.js';
-import { answerProblems, NO_SUCH_ROUTE } from '../../src/core/http/problems.js';
-import { clientsDoor } from '../../src/apps/clients/door.js';
-import { EmployeeRepository } from '../../src/core/organisation/employee/employee.db.js';
-import { ClientsRoleRepository } from '../../src/apps/clients/role.db.js';
-import { RoleService } from '../../src/apps/clients/role.service.js';
-import { clientsRoutes } from '../../src/apps/clients/routes.js';
-import { clientsVisibility } from '../../src/apps/clients/visibility.js';
-import { portalRoutes } from '../../src/core/portal/routes.js';
+import { NO_SUCH_ROUTE } from '../../src/core/http/problems.js';
+import { type Asker, type ClientsApp, startClientsApp } from '../support/clients-app.js';
 import { recordingDenials } from '../support/recording-denials.js';
 
 /**
  * The clients roles screen, over HTTP against a real database. #274, Clients SRS CLI 94.
  *
- * The routes are mounted on an app of their own, behind a stand in for `identify` that builds
- * the actor exactly as signing in does: `signedInAs` from the portal roles held. That a portal
- * System Administrator is somebody holding SYS_ADMIN is ../unit/one-actor.test.ts's to prove.
+ * Mounted as app.ts mounts it, by ../support/clients-app.ts.
  */
 
 const testDatabaseUrl = await databaseForThisFile();
@@ -33,63 +21,18 @@ const denials = recordingDenials();
 
 let db: Kysely<Database>;
 let admin: Client;
-let server: Server;
-let origin: string;
+let app: ClientsApp;
 let people: Record<string, string>;
 let clients: Router;
-
-/** Who is asking, and whether they are a portal System Administrator. */
-interface Asker {
-  employeeId: string;
-  sysAdmin?: boolean;
-}
 
 beforeAll(async () => {
   db = databaseFor(testDatabaseUrl);
   admin = new Client({ connectionString: testDatabaseUrl });
   await admin.connect();
 
-  const app = express();
-  app.use(express.json());
-
-  /* The stand in for identify(): the test says who, and the actor is built as sign in builds
-     it. */
-  app.use((request: Request, response: Response, next: NextFunction) => {
-    const employeeId = request.header('x-test-employee');
-
-    if (employeeId !== undefined) {
-      response.locals.actor = signedInAs(employeeId, {
-        roles:
-          request.header('x-test-sysadmin') === 'yes' ? ['EMPLOYEE', 'SYS_ADMIN'] : ['EMPLOYEE'],
-        isManager: false,
-      });
-    }
-    next();
-  });
-
-  const guard = new Guard(denials);
-  const grants = new ClientsRoleRepository(db);
-
-  /* As app.ts builds it. Kept, so the test below can ask it which routes it has. */
-  clients = clientsRoutes({
-    door: clientsDoor(guard, grants),
-    roles: new RoleService(guard, grants, new EmployeeRepository(db)),
-  });
-
-  app.use('/api', clients);
-  app.use('/api', portalRoutes({ apps: [clientsVisibility(guard, grants)] }));
-  /* As app.ts ends: an address with nothing at it. */
-  app.use('/api', (_request: Request, response: Response) => {
-    response.status(404).json(NO_SUCH_ROUTE);
-  });
-  app.use(answerProblems());
-
-  server = await new Promise<Server>((resolve) => {
-    const listening = app.listen(0, () => {
-      resolve(listening);
-    });
-  });
-  origin = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
+  app = await startClientsApp(db, denials);
+  /* Kept, so the test below can ask it which routes it has. */
+  clients = app.router;
 });
 
 beforeEach(async () => {
@@ -99,31 +42,13 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await new Promise<void>((resolve) => {
-    server.close(() => {
-      resolve();
-    });
-  });
+  await app?.close();
   await db?.destroy();
   await admin?.end();
 });
 
-function send(
-  method: string,
-  path: string,
-  as: Asker,
-  body?: unknown,
-): Promise<globalThis.Response> {
-  const headers: Record<string, string> = { 'x-test-employee': as.employeeId };
-
-  if (as.sysAdmin === true) headers['x-test-sysadmin'] = 'yes';
-  if (body !== undefined) headers['content-type'] = 'application/json';
-
-  return fetch(`${origin}${path}`, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
+function send(method: string, path: string, as: Asker, body?: unknown) {
+  return app.send(method, path, as, body);
 }
 
 /** The system administrator in these tests: the head of HR, who holds no clients role. */

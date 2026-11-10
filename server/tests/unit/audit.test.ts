@@ -101,6 +101,10 @@ describe('the entities an entry can be about', () => {
       'notification_template',
       /* #226. Who colleagues are sent to while somebody is away, and who said so. */
       'leave_cover',
+      /* #293, Clients NFR CLI AUD 01. A product renamed or retired changes what every
+         pipeline filter means, and the row says only what it is called today. */
+      'clients_product_line',
+      'clients_product',
     ]);
   });
 });
