@@ -200,6 +200,11 @@ describe('the columns', () => {
       /** FR 49. The days a delegate answers for somebody. */
       'approval_delegation.ends_on',
       'approval_delegation.starts_on',
+      /** #276. When a client started and stopped using a product. */
+      'clients_client_product.ended_on',
+      'clients_client_product.since_on',
+      /** #276. The day a client type stopped being offered for new clients. */
+      'clients_client_type.retired_on',
       /** #293. The day a product or a line stopped taking new deals. */
       'clients_product.retired_on',
       'clients_product_line.retired_on',

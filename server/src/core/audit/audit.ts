@@ -38,6 +38,11 @@ export const AUDITED_ENTITIES = [
   /** #293. Clients NFR CLI AUD 01: what clients sells, kept by a BD manager. */
   'clients_product_line',
   'clients_product',
+  /** #276. The clients themselves, and the kinds of institution they are. */
+  'clients_client_type',
+  'clients_client',
+  'clients_contact',
+  'clients_client_product',
 ] as const;
 
 export type AuditedEntity = (typeof AUDITED_ENTITIES)[number];
@@ -63,6 +68,10 @@ export const AUDITED_ENTITY_LABELS: Readonly<Record<AuditedEntity, string>> = {
   notification_template: 'Email wording',
   clients_product_line: 'Clients product line',
   clients_product: 'Clients product',
+  clients_client_type: 'Client type',
+  clients_client: 'Client',
+  clients_contact: 'Client contact',
+  clients_client_product: 'Product a client uses',
 };
 
 /**

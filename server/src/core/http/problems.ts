@@ -476,6 +476,12 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
       state of the setup that refuses it, as a role already held is. */
   ClientsNameTaken: 409,
   ClientsLineRetired: 409,
+  /** #276, CLI 02. The client is there already; adding to it is the fix. */
+  ClientAlreadyRecorded: 409,
+  /** #276. Bringing the contact back is the fix. */
+  ContactRemoved: 409,
+  /** #276. Correcting the dates on the one already there is the fix. */
+  ProductAlreadyInUse: 409,
 };
 
 /**

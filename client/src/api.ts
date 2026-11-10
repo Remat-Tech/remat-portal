@@ -3227,8 +3227,8 @@ export async function addProduct(lineId: string, name: string): Promise<void> {
   await request<unknown>('POST', '/api/clients/setup/products', { lineId, name });
 }
 
-/** A line or a product, as the setup routes name them. */
-export type SetupThing = 'lines' | 'products';
+/** A line, a product or a client type, as the setup routes name them. */
+export type SetupThing = 'lines' | 'products' | 'client-types';
 
 export async function renameSetupThing(thing: SetupThing, id: string, name: string): Promise<void> {
   await request<unknown>('PATCH', `/api/clients/setup/${thing}/${encodeURIComponent(id)}`, {
@@ -3243,4 +3243,193 @@ export async function retireOrRestore(
   act: 'retire' | 'restore',
 ): Promise<void> {
   await request<unknown>('POST', `/api/clients/setup/${thing}/${encodeURIComponent(id)}/${act}`);
+}
+
+/* -------------------------------------------------------- clients themselves, #276 */
+
+/**
+ * Wherever a field below is `string | null`, null means nobody has said: the screen shows it as
+ * missing, by name, never as a blank (CLI 06).
+ */
+
+/** What kind of institution a client is: Bank, Broker. A list a BD manager keeps. */
+export interface ClientType {
+  id: string;
+  name: string;
+  /** The day it stopped being offered for new clients, or null while it is. */
+  retiredOn: string | null;
+}
+
+/** Somebody named on a client: its owner, or somebody it may be moved to. */
+export interface ClientsNamed {
+  id: string;
+  name: string;
+}
+
+/** A client as the clients list shows it. */
+export interface ClientSummary {
+  id: string;
+  name: string;
+  type: { id: string; name: string };
+  owner: ClientsNamed;
+}
+
+export interface ClientContact {
+  id: string;
+  clientId: string;
+  name: string;
+  jobTitle: string | null;
+  email: string | null;
+  phone: string | null;
+  createdAt: string;
+  /** When they stopped being somebody to deal with there, or null while they are. */
+  removedAt: string | null;
+}
+
+/** A product a client uses or has used. */
+export interface ClientProductInUse {
+  productId: string;
+  productName: string;
+  lineName: string;
+  sinceOn: string;
+  /** The day they stopped, or null while they use it. */
+  endedOn: string | null;
+  wonBy: string | null;
+}
+
+/** What the person reading the page may do to it. The server's answer; it refuses the rest. */
+export interface ClientPermissions {
+  /** Name, type and note. */
+  change: boolean;
+  /** Moving it to somebody else. */
+  reassign: boolean;
+  /** Adding and correcting contacts and products. */
+  contribute: boolean;
+}
+
+export interface ClientPage extends ClientSummary {
+  note: string | null;
+  createdAt: string;
+  /** By name, removed ones included. */
+  contacts: ClientContact[];
+  /** By product name, ones it stopped using included. */
+  products: ClientProductInUse[];
+  may: ClientPermissions;
+}
+
+/** A product that may be added to a client. */
+export interface ClientsOfferedProduct {
+  id: string;
+  name: string;
+  lineName: string;
+}
+
+export async function clientsList(): Promise<ClientSummary[]> {
+  const { clients } = await request<{ clients: ClientSummary[] }>('GET', '/api/clients/clients');
+  return clients;
+}
+
+export async function clientPage(id: string): Promise<ClientPage> {
+  return request<ClientPage>('GET', `/api/clients/clients/${encodeURIComponent(id)}`);
+}
+
+/** Every client type, retired ones included, for the form to offer the rest. */
+export async function clientTypes(): Promise<ClientType[]> {
+  const { types } = await request<{ types: ClientType[] }>('GET', '/api/clients/client-types');
+  return types;
+}
+
+/** Records a client, owned by whoever asks. Answers with its id. */
+export async function createClient(client: {
+  name: string;
+  typeId: string;
+  note: string;
+}): Promise<string> {
+  const { id } = await request<{ id: string }>('POST', '/api/clients/clients', client);
+  return id;
+}
+
+/** Only what is given changes. A note of '' takes it away. */
+export async function changeClient(
+  id: string,
+  change: { name?: string; typeId?: string; note?: string; ownerId?: string },
+): Promise<void> {
+  await request<unknown>('PATCH', `/api/clients/clients/${encodeURIComponent(id)}`, change);
+}
+
+/** Everybody holding a clients role, whom a client may be moved to. */
+export async function clientsHolders(): Promise<ClientsNamed[]> {
+  const { people } = await request<{ people: ClientsNamed[] }>('GET', '/api/clients/holders');
+  return people;
+}
+
+/** The details of a contact, as a form sends them: '' for anything not known. */
+export interface ContactDetails {
+  name: string;
+  jobTitle: string;
+  email: string;
+  phone: string;
+}
+
+export async function addContact(clientId: string, contact: ContactDetails): Promise<void> {
+  await request<unknown>(
+    'POST',
+    `/api/clients/clients/${encodeURIComponent(clientId)}/contacts`,
+    contact,
+  );
+}
+
+export async function changeContact(id: string, contact: ContactDetails): Promise<void> {
+  await request<unknown>('PATCH', `/api/clients/contacts/${encodeURIComponent(id)}`, contact);
+}
+
+/** Marks a contact removed, or brings them back. Nothing is deleted. */
+export async function removeOrRestoreContact(id: string, act: 'remove' | 'restore'): Promise<void> {
+  await request<unknown>('POST', `/api/clients/contacts/${encodeURIComponent(id)}/${act}`);
+}
+
+/** The products that may be added to a client, by line. */
+export async function offeredProducts(): Promise<ClientsOfferedProduct[]> {
+  const { products } = await request<{ products: ClientsOfferedProduct[] }>(
+    'GET',
+    '/api/clients/products',
+  );
+  return products;
+}
+
+export async function addProductInUse(
+  clientId: string,
+  productId: string,
+  sinceOn: string,
+): Promise<void> {
+  await request<unknown>('POST', `/api/clients/clients/${encodeURIComponent(clientId)}/products`, {
+    productId,
+    sinceOn,
+  });
+}
+
+/** An `endedOn` of null says they use it again. */
+export async function changeProductInUse(
+  clientId: string,
+  productId: string,
+  dates: { sinceOn: string; endedOn: string | null },
+): Promise<void> {
+  await request<unknown>(
+    'PATCH',
+    `/api/clients/clients/${encodeURIComponent(clientId)}/products/${encodeURIComponent(productId)}`,
+    dates,
+  );
+}
+
+/** Every client type, retired ones included. A BD manager's. */
+export async function setupClientTypes(): Promise<ClientType[]> {
+  const { types } = await request<{ types: ClientType[] }>(
+    'GET',
+    '/api/clients/setup/client-types',
+  );
+  return types;
+}
+
+export async function addClientType(name: string): Promise<void> {
+  await request<unknown>('POST', '/api/clients/setup/client-types', { name });
 }

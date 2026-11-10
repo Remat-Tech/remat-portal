@@ -17,7 +17,15 @@ let sysadmin: string;
 let ama: string;
 let kofi: string;
 
-const TABLES = ['clients_role', 'clients_product_line', 'clients_product'];
+const TABLES = [
+  'clients_role',
+  'clients_product_line',
+  'clients_product',
+  'clients_client_type',
+  'clients_client',
+  'clients_contact',
+  'clients_client_product',
+];
 
 beforeAll(async () => {
   admin = new Client({ connectionString: testDatabaseUrl });
@@ -378,6 +386,324 @@ describe('the product lines as migrated', () => {
   });
 });
 
+/* ------------------------------------------------------------------ a client, #276 */
+
+describe('a client type', () => {
+  const TYPE = `INSERT INTO clients_client_type (name) VALUES ($1) RETURNING id`;
+
+  it('starts as the five kinds of institution the department sells to today', async () => {
+    const { rows } = await admin.query<{ name: string }>(
+      'SELECT name FROM clients_client_type WHERE retired_on IS NULL ORDER BY name',
+    );
+
+    expect(rows.map((row) => row.name)).toEqual([
+      'Bank',
+      'Broker',
+      'DFI',
+      'Digital lender',
+      'Microfinance institution',
+    ]);
+  });
+
+  /* #276: a kind the department starts selling to needs no migration. */
+  it('takes others, each named once ignoring case and surrounding spaces', async () => {
+    expect(await refusedBy(TYPE, ['Insurer'])).toBeNull();
+    expect(await refusedBy(TYPE, ['  insurer '])).toBe('uq_clients_client_type_name');
+    expect(await refusedBy(TYPE, ['BANK'])).toBe('uq_clients_client_type_name');
+  });
+
+  it('is never nameless', async () => {
+    expect(await refusedBy(TYPE, ['  '])).toBe('clients_client_type_named');
+  });
+});
+
+describe('a client', () => {
+  const CLIENT = `INSERT INTO clients_client (name, type_id, owner_id, note)
+                  VALUES ($1, $2, $3, $4) RETURNING id`;
+
+  let bank: string;
+
+  beforeEach(async () => {
+    bank = (
+      await admin.query<{ id: string }>(`SELECT id FROM clients_client_type WHERE name = 'Bank'`)
+    ).rows[0].id;
+  });
+
+  it('records its name, type, owner and note, and when it was created', async () => {
+    const { rows } = await admin.query(
+      `INSERT INTO clients_client (name, type_id, owner_id, note)
+       VALUES ('Testbank', $1, $2, 'Met at the fintech summit')
+       RETURNING name, type_id, owner_id, note, created_at`,
+      [bank, ama],
+    );
+
+    expect(rows[0]).toMatchObject({
+      name: 'Testbank',
+      type_id: bank,
+      owner_id: ama,
+      note: 'Met at the fintech summit',
+    });
+    expect(rows[0].created_at).toBeInstanceOf(Date);
+  });
+
+  it('is of a type that exists', async () => {
+    expect(await refusedBy(CLIENT, ['Testbank', null, ama, null])).toMatch(/type_id/);
+    expect(await refusedBy(CLIENT, ['Testbank', '987654321', ama, null])).toBe(
+      'clients_client_type_id_fkey',
+    );
+  });
+
+  it('may be of a type added since', async () => {
+    const insurer = (
+      await admin.query<{ id: string }>(
+        `INSERT INTO clients_client_type (name) VALUES ('Insurer') RETURNING id`,
+      )
+    ).rows[0].id;
+
+    expect(await refusedBy(CLIENT, ['Testinsurer', insurer, ama, null])).toBeNull();
+  });
+
+  /* CLI 02. Done when: creating a duplicate client name is refused. */
+  it('is recorded once, whatever the case or spacing of its name', async () => {
+    expect(await refusedBy(CLIENT, ['Agricultural Development Bank', bank, ama, null])).toBeNull();
+
+    for (const same of [
+      'agricultural development bank',
+      '  AGRICULTURAL DEVELOPMENT BANK ',
+      'Agricultural  Development   Bank',
+      'Agricultural\tDevelopment\nBank',
+    ]) {
+      expect(await refusedBy(CLIENT, [same, bank, kofi, null])).toBe('uq_clients_client_name');
+    }
+
+    /* Another name altogether, which merely contains the first, is another client. */
+    expect(
+      await refusedBy(CLIENT, ['Agricultural Development Bank Ghana', bank, ama, null]),
+    ).toBeNull();
+  });
+
+  it('is refused the name of another client when renamed into it', async () => {
+    await admin.query(CLIENT, ['ADB', bank, ama, null]);
+    const { rows } = await admin.query<{ id: string }>(CLIENT, ['Ecobank', bank, ama, null]);
+
+    expect(
+      await refusedBy(`UPDATE clients_client SET name = ' adb' WHERE id = $1`, [rows[0].id]),
+    ).toBe('uq_clients_client_name');
+  });
+
+  it('compares names through one function, which the index uses', async () => {
+    const { rows } = await admin.query<{ key: string }>(
+      `SELECT clients_name_key(E'  Agricultural \\t Development  BANK\\n') AS key`,
+    );
+    expect(rows[0].key).toBe('agricultural development bank');
+
+    const index = await admin.query<{ indexdef: string }>(
+      `SELECT indexdef FROM pg_indexes WHERE indexname = 'uq_clients_client_name'`,
+    );
+    expect(index.rows[0]?.indexdef).toMatch(/UNIQUE INDEX .* \(clients_name_key\(/);
+  });
+
+  it('is named, and owned by somebody who exists', async () => {
+    expect(await refusedBy(CLIENT, ['  ', bank, ama, null])).toBe('clients_client_named');
+    expect(await refusedBy(CLIENT, ['\t\n', bank, ama, null])).toBe('clients_client_named');
+    expect(await refusedBy(CLIENT, ['Testbank', bank, null, null])).toMatch(/owner_id/);
+    expect(await refusedBy(CLIENT, ['Testbank', bank, '987654321', null])).toBe(
+      'clients_client_owner_id_fkey',
+    );
+  });
+
+  /* Missing is null, never an empty string, so the screen can say it is missing. */
+  it('has no note rather than a blank one', async () => {
+    expect(await refusedBy(CLIENT, ['Testbank', bank, ama, '  '])).toBe(
+      'clients_client_note_not_blank',
+    );
+    expect(await refusedBy(CLIENT, ['Testbank', bank, ama, null])).toBeNull();
+  });
+
+  it('is written to the audit log by the database, with who did it', async () => {
+    await admin.query(
+      `SELECT set_config('lms.audit.actor', 'employee 7', true),
+              set_config('lms.audit.actor_employee_id', $1, true)`,
+      [ama],
+    );
+    const { rows } = await admin.query<{ id: string }>(CLIENT, ['Testbank', bank, ama, null]);
+    await admin.query('UPDATE clients_client SET owner_id = $2 WHERE id = $1', [rows[0].id, kofi]);
+
+    const log = await admin.query(
+      `SELECT action, entity_id, actor_employee_id FROM audit_log
+        WHERE entity = 'clients_client' ORDER BY id`,
+    );
+    expect(log.rows).toEqual([
+      { action: 'CREATE', entity_id: rows[0].id, actor_employee_id: ama },
+      { action: 'UPDATE', entity_id: rows[0].id, actor_employee_id: ama },
+    ]);
+  });
+
+  it('is found by owner', async () => {
+    const { rows } = await admin.query<{ indexdef: string }>(
+      `SELECT indexdef FROM pg_indexes WHERE indexname = 'idx_clients_client_owner'`,
+    );
+
+    expect(rows[0]?.indexdef).toMatch(/ON public\.clients_client USING btree \(owner_id\)/);
+  });
+});
+
+/* ------------------------------------------------------------ a contact, #276 */
+
+describe('a contact', () => {
+  const CONTACT = `INSERT INTO clients_contact (client_id, name, job_title, email, phone)
+                   VALUES ($1, $2, $3, $4, $5) RETURNING id`;
+
+  let adb: string;
+
+  beforeEach(async () => {
+    adb = (
+      await admin.query<{ id: string }>(
+        `INSERT INTO clients_client (name, type_id, owner_id)
+         SELECT 'Testbank', id, $1 FROM clients_client_type WHERE name = 'Bank' RETURNING id`,
+        [ama],
+      )
+    ).rows[0].id;
+  });
+
+  it('records a name, job title, email and phone at one client', async () => {
+    const { rows } = await admin.query(
+      `INSERT INTO clients_contact (client_id, name, job_title, email, phone)
+       VALUES ($1, 'Ama Owusu', 'Head of IT', 'ama@testbank.com', '+233 30 000 0000')
+       RETURNING client_id, name, job_title, email, phone, created_at, removed_at`,
+      [adb],
+    );
+
+    expect(rows[0]).toMatchObject({
+      client_id: adb,
+      name: 'Ama Owusu',
+      job_title: 'Head of IT',
+      email: 'ama@testbank.com',
+      phone: '+233 30 000 0000',
+      removed_at: null,
+    });
+    expect(rows[0].created_at).toBeInstanceOf(Date);
+  });
+
+  it('needs only a name and a client that exists', async () => {
+    expect(await refusedBy(CONTACT, [adb, 'Kofi Mensah', null, null, null])).toBeNull();
+    expect(await refusedBy(CONTACT, [adb, ' \t', null, null, null])).toBe('clients_contact_named');
+    expect(await refusedBy(CONTACT, ['987654321', 'Kofi', null, null, null])).toBe(
+      'clients_contact_client_id_fkey',
+    );
+  });
+
+  /* Missing is null, never an empty string, so the screen can say it is missing. */
+  it('has no job title, email or phone rather than a blank one', async () => {
+    expect(await refusedBy(CONTACT, [adb, 'Kofi', ' ', null, null])).toBe(
+      'clients_contact_job_title_not_blank',
+    );
+    expect(await refusedBy(CONTACT, [adb, 'Kofi', null, '', null])).toBe(
+      'clients_contact_email_not_blank',
+    );
+    expect(await refusedBy(CONTACT, [adb, 'Kofi', null, null, '  '])).toBe(
+      'clients_contact_phone_not_blank',
+    );
+  });
+
+  it('is removed after it was added, and kept', async () => {
+    const { rows } = await admin.query<{ id: string }>(CONTACT, [adb, 'Kofi', null, null, null]);
+
+    expect(
+      await refusedBy(
+        `UPDATE clients_contact SET removed_at = created_at - interval '1 day' WHERE id = $1`,
+        [rows[0].id],
+      ),
+    ).toBe('clients_contact_removed_after_added');
+    expect(
+      await refusedBy('UPDATE clients_contact SET removed_at = now() WHERE id = $1', [rows[0].id]),
+    ).toBeNull();
+  });
+
+  it('is written to the audit log by the database', async () => {
+    const { rows } = await admin.query<{ id: string }>(CONTACT, [adb, 'Kofi', null, null, null]);
+
+    const log = await admin.query(
+      `SELECT action, entity_id FROM audit_log WHERE entity = 'clients_contact' ORDER BY id`,
+    );
+    expect(log.rows).toEqual([{ action: 'CREATE', entity_id: rows[0].id }]);
+  });
+});
+
+/* ------------------------------------------------ a product a client uses, #276 */
+
+describe('a product a client uses', () => {
+  const IN_USE = `INSERT INTO clients_client_product (client_id, product_id, since_on, ended_on)
+                  VALUES ($1, $2, $3, $4) RETURNING id`;
+
+  let adb: string;
+  let creditStudio: string;
+
+  beforeEach(async () => {
+    adb = (
+      await admin.query<{ id: string }>(
+        `INSERT INTO clients_client (name, type_id, owner_id)
+         SELECT 'Testbank', id, $1 FROM clients_client_type WHERE name = 'Bank' RETURNING id`,
+        [ama],
+      )
+    ).rows[0].id;
+    creditStudio = (
+      await admin.query<{ id: string }>(
+        `SELECT id FROM clients_product WHERE name = 'CreditStudio'`,
+      )
+    ).rows[0].id;
+  });
+
+  it('records the day it started, and that nothing won it yet', async () => {
+    const { rows } = await admin.query(
+      `INSERT INTO clients_client_product (client_id, product_id, since_on)
+       VALUES ($1, $2, '2024-03-01') RETURNING since_on::text, ended_on, won_by`,
+      [adb, creditStudio],
+    );
+
+    expect(rows[0]).toEqual({ since_on: '2024-03-01', ended_on: null, won_by: null });
+  });
+
+  it('needs a start date, a client and a product that exist', async () => {
+    expect(await refusedBy(IN_USE, [adb, creditStudio, null, null])).toMatch(/since_on/);
+    expect(await refusedBy(IN_USE, ['987654321', creditStudio, '2024-03-01', null])).toBe(
+      'clients_client_product_client_id_fkey',
+    );
+    expect(await refusedBy(IN_USE, [adb, '987654321', '2024-03-01', null])).toBe(
+      'clients_client_product_product_id_fkey',
+    );
+  });
+
+  it('is on a client once', async () => {
+    expect(await refusedBy(IN_USE, [adb, creditStudio, '2024-03-01', null])).toBeNull();
+    expect(await refusedBy(IN_USE, [adb, creditStudio, '2025-01-01', null])).toBe(
+      'uq_clients_client_product',
+    );
+  });
+
+  it('ends on or after the day it started', async () => {
+    expect(await refusedBy(IN_USE, [adb, creditStudio, '2024-03-01', '2024-02-28'])).toBe(
+      'clients_client_product_ends_after_it_starts',
+    );
+    expect(await refusedBy(IN_USE, [adb, creditStudio, '2024-03-01', '2024-03-01'])).toBeNull();
+  });
+
+  it('is written to the audit log by the database', async () => {
+    const { rows } = await admin.query<{ id: string }>(IN_USE, [
+      adb,
+      creditStudio,
+      '2024-03-01',
+      null,
+    ]);
+
+    const log = await admin.query(
+      `SELECT action, entity_id FROM audit_log
+        WHERE entity = 'clients_client_product' ORDER BY id`,
+    );
+    expect(log.rows).toEqual([{ action: 'CREATE', entity_id: rows[0].id }]);
+  });
+});
+
 /* ---------------------------------------------------------- what lms_app may do */
 
 describe('the application role', () => {
@@ -404,7 +730,7 @@ describe('the application role', () => {
   });
 
   /* A grant is ended and nothing else; a line or product is renamed and retired, and a product
-     never changes line. No table may be updated whole. */
+     never changes line; a client keeps when it was created. No table may be updated whole. */
   it('changes only the columns each table is meant to change', async () => {
     const { rows } = await admin.query<{ table: string }>(
       `SELECT t AS table FROM unnest($1::text[]) AS t
@@ -420,6 +746,19 @@ describe('the application role', () => {
       [TABLES],
     );
     expect(columns.rows).toEqual([
+      { table_name: 'clients_client', column_name: 'name' },
+      { table_name: 'clients_client', column_name: 'note' },
+      { table_name: 'clients_client', column_name: 'owner_id' },
+      { table_name: 'clients_client', column_name: 'type_id' },
+      { table_name: 'clients_client_product', column_name: 'ended_on' },
+      { table_name: 'clients_client_product', column_name: 'since_on' },
+      { table_name: 'clients_client_type', column_name: 'name' },
+      { table_name: 'clients_client_type', column_name: 'retired_on' },
+      { table_name: 'clients_contact', column_name: 'email' },
+      { table_name: 'clients_contact', column_name: 'job_title' },
+      { table_name: 'clients_contact', column_name: 'name' },
+      { table_name: 'clients_contact', column_name: 'phone' },
+      { table_name: 'clients_contact', column_name: 'removed_at' },
       { table_name: 'clients_product', column_name: 'name' },
       { table_name: 'clients_product', column_name: 'retired_on' },
       { table_name: 'clients_product_line', column_name: 'name' },

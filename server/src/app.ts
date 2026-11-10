@@ -79,6 +79,10 @@ import { DirectoryService } from './apps/directory/directory.service.js';
 import { type DirectoryLimits, directoryRoutes } from './apps/directory/routes.js';
 import { clientsRoutes } from './apps/clients/routes.js';
 import type { ClientsRoleRepository } from './apps/clients/role.db.js';
+import type { ClientsClientRepository } from './apps/clients/client.db.js';
+import { ClientService } from './apps/clients/client.service.js';
+import type { ClientsContactRepository } from './apps/clients/contact.db.js';
+import type { ClientsProductInUseRepository } from './apps/clients/product-in-use.db.js';
 import type { ClientsProductRepository } from './apps/clients/product.db.js';
 import { SetupService } from './apps/clients/setup.service.js';
 import { RoleService } from './apps/clients/role.service.js';
@@ -216,6 +220,12 @@ export interface Application {
   clientsRoles?: ClientsRoleRepository;
   /** #293. Product lines and products. Optional, so a test app without them has no setup routes. */
   clientsProducts?: ClientsProductRepository;
+  /** #276. Clients themselves. Optional, so a test app without them has no client routes. */
+  clientsClients?: ClientsClientRepository;
+  /** #276. Their contacts, which go with them: no client routes without both. */
+  clientsContacts?: ClientsContactRepository;
+  /** #276. The products they use, which go with them too. */
+  clientsProductsInUse?: ClientsProductInUseRepository;
   /** Where a 500 is written down. */
   failures?: FailureLog;
   /** Read from `SESSION_SECRET` when not given. */
@@ -553,9 +563,26 @@ export function buildApp(parts: Application): Express {
         grants: clientsRoles,
         roles: new RoleService(parts.guard, clientsRoles, parts.employees),
         setup:
-          parts.clientsProducts === undefined
+          parts.clientsProducts === undefined || parts.clientsClients === undefined
             ? undefined
-            : new SetupService(parts.guard, clientsRoles, parts.clientsProducts),
+            : new SetupService(
+                parts.guard,
+                clientsRoles,
+                parts.clientsProducts,
+                parts.clientsClients,
+              ),
+        clients:
+          parts.clientsClients === undefined ||
+          parts.clientsContacts === undefined ||
+          parts.clientsProductsInUse === undefined
+            ? undefined
+            : new ClientService(
+                parts.guard,
+                clientsRoles,
+                parts.clientsClients,
+                parts.clientsContacts,
+                parts.clientsProductsInUse,
+              ),
       }),
     );
   }

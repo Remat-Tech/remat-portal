@@ -1,5 +1,6 @@
 /**
- * Products and lines, kept by a BD manager. #293, Clients SRS CLI 07, CLI 08, TDD 3.
+ * Products and lines, and client types, kept by a BD manager. #293, #276, Clients SRS CLI 07,
+ * CLI 08, TDD 3.
  *
  * Every method asks `clientsPolicy.setUp` first, before reading the request or looking anything
  * up, so somebody refused learns nothing from what they sent. Checklists and reasons join this
@@ -10,6 +11,8 @@ import type { Actor } from '../../core/auth/actor.js';
 import type { Guard } from '../../core/auth/policy.js';
 import { currentDate } from '../../core/calendar/time.js';
 import { accessOf } from './access.js';
+import { type ClientType, ClientTypeNotFound, readClientTypeName } from './client.js';
+import type { ClientsClientRepository } from './client.db.js';
 import { clientsPolicy } from './policy.js';
 import {
   ClientsLineNotFound,
@@ -29,6 +32,11 @@ export class SetupService {
     private readonly guard: Guard,
     private readonly grants: Pick<ClientsRoleRepository, 'rolesOf'>,
     private readonly products: ClientsProductRepository,
+    /** #276. The kinds of institution a client may be. */
+    private readonly clientTypesFrom: Pick<
+      ClientsClientRepository,
+      'types' | 'findType' | 'addType' | 'renameType' | 'retireType' | 'restoreType'
+    >,
   ) {}
 
   /** Every line and its products, retired ones included and marked. */
@@ -109,6 +117,55 @@ export class SetupService {
     }
 
     await this.products.restoreProduct(actor, id);
+  }
+
+  /* ------------------------------------------------------------------ client types, #276 */
+
+  /** Every client type, retired ones included and marked. */
+  async clientTypes(actor: Actor): Promise<ClientType[]> {
+    await this.mustSetUp(actor);
+
+    return this.clientTypesFrom.types();
+  }
+
+  /** A kind of institution the department starts selling to. */
+  async addClientType(actor: Actor, body: unknown): Promise<ClientType> {
+    await this.mustSetUp(actor);
+
+    return this.clientTypesFrom.addType(actor, readClientTypeName(body));
+  }
+
+  async renameClientType(actor: Actor, id: string, body: unknown): Promise<void> {
+    await this.mustSetUp(actor);
+
+    const name = readClientTypeName(body);
+    await this.clientTypeOrRefuse(id);
+    await this.clientTypesFrom.renameType(actor, id, name);
+  }
+
+  /** No longer offered for new clients. A client of it keeps it. */
+  async retireClientType(actor: Actor, id: string): Promise<void> {
+    await this.mustSetUp(actor);
+    await this.clientTypeOrRefuse(id);
+
+    await this.clientTypesFrom.retireType(actor, id, currentDate());
+  }
+
+  async restoreClientType(actor: Actor, id: string): Promise<void> {
+    await this.mustSetUp(actor);
+    await this.clientTypeOrRefuse(id);
+
+    await this.clientTypesFrom.restoreType(actor, id);
+  }
+
+  private async clientTypeOrRefuse(id: string): Promise<ClientType> {
+    const type = isAnId(id) ? await this.clientTypesFrom.findType(id) : undefined;
+
+    if (type === undefined) {
+      throw new ClientTypeNotFound();
+    }
+
+    return type;
   }
 
   private async mustSetUp(actor: Actor): Promise<void> {

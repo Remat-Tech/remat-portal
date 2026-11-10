@@ -8,6 +8,10 @@ import type { Database } from '../../src/core/db/index.js';
 import { answerProblems, NO_SUCH_ROUTE } from '../../src/core/http/problems.js';
 import { EmployeeRepository } from '../../src/core/organisation/employee/employee.db.js';
 import { portalRoutes } from '../../src/core/portal/routes.js';
+import { ClientsClientRepository } from '../../src/apps/clients/client.db.js';
+import { ClientService } from '../../src/apps/clients/client.service.js';
+import { ClientsContactRepository } from '../../src/apps/clients/contact.db.js';
+import { ClientsProductInUseRepository } from '../../src/apps/clients/product-in-use.db.js';
 import { clientsDoor } from '../../src/apps/clients/door.js';
 import { ClientsProductRepository } from '../../src/apps/clients/product.db.js';
 import { ClientsRoleRepository } from '../../src/apps/clients/role.db.js';
@@ -67,7 +71,19 @@ export async function startClientsApp(
     door: clientsDoor(guard, grants),
     grants,
     roles: new RoleService(guard, grants, new EmployeeRepository(db)),
-    setup: new SetupService(guard, grants, new ClientsProductRepository(db)),
+    setup: new SetupService(
+      guard,
+      grants,
+      new ClientsProductRepository(db),
+      new ClientsClientRepository(db),
+    ),
+    clients: new ClientService(
+      guard,
+      grants,
+      new ClientsClientRepository(db),
+      new ClientsContactRepository(db),
+      new ClientsProductInUseRepository(db),
+    ),
   });
 
   app.use('/api', router);

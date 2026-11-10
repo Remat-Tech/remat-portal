@@ -16,6 +16,9 @@ import { AttachmentRepository } from './apps/leave/leave-request/attachment.db.j
 import { CoverRepository } from './apps/leave/cover/cover.db.js';
 import { PhotoRepository } from './apps/directory/photo.db.js';
 import { ClientsRoleRepository } from './apps/clients/role.db.js';
+import { ClientsClientRepository } from './apps/clients/client.db.js';
+import { ClientsContactRepository } from './apps/clients/contact.db.js';
+import { ClientsProductInUseRepository } from './apps/clients/product-in-use.db.js';
 import { ClientsProductRepository } from './apps/clients/product.db.js';
 import { ClientsLeavers, summaryOfLeaversSwept } from './apps/clients/leavers.js';
 import { AttachmentLinkRepository } from './apps/leave/leave-request/attachment-link.db.js';
@@ -366,6 +369,10 @@ const app = buildApp({
   clientsRoles,
   /** #293. */
   clientsProducts: new ClientsProductRepository(db),
+  /** #276. */
+  clientsClients: new ClientsClientRepository(db),
+  clientsContacts: new ClientsContactRepository(db),
+  clientsProductsInUse: new ClientsProductInUseRepository(db),
   /* Resolved here as well as inside buildApp, so that a missing secret stops the process
      before a socket is opened rather than while the first request is being served. */
   secret: sessionSecretFrom(),

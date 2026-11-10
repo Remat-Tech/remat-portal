@@ -112,6 +112,9 @@ describe('reading and adding (CLI 90, TDD 12.1 rows two and three)', () => {
   it.each([
     'createClient',
     'addContact',
+    /* #276. */
+    'editContact',
+    'recordProductInUse',
     'createDeal',
     'logActivity',
     'addNextStep',
@@ -156,6 +159,14 @@ describe('changing what somebody owns (CLI 05, CLI 13, CLI 64)', () => {
     expect(clientsPolicy.changeDeal(actor, access, { id: '9', owner: { id: AMA } }).told).toBe(
       "Only the deal's owner or a BD manager can change this deal.",
     );
+  });
+
+  /* #276: the owner changes their client's name, type and note, and does not hand it on. */
+  it('lets the owner of a client change it, but not move it to somebody else', () => {
+    const [actor, access] = cast.owner;
+
+    expect(answer(clientsPolicy.changeClient(actor, access, { id: '9', owner }))).toBe('allowed');
+    expect(answer(clientsPolicy.reassign(actor, access, 'client', '9'))).toBe('refused openly');
   });
 });
 

@@ -96,9 +96,21 @@ export interface MeetingReportSubject {
   status: 'DRAFT' | 'SHARED';
 }
 
-/** What may be added to clients by anybody with a role (TDD 12.1, row three). */
+/**
+ * What may be added to clients by anybody with a role (TDD 12.1, row three). A contact is
+ * corrected, removed and brought back by anybody with a role too, not only the client's owner
+ * (#276): whoever last spoke to them knows best.
+ */
 export type Contribution =
-  'createClient' | 'addContact' | 'createDeal' | 'logActivity' | 'addNextStep' | 'addDocument';
+  | 'createClient'
+  | 'addContact'
+  | 'editContact'
+  /** #276, CLI 04. A product a client already uses, and when they started and stopped. */
+  | 'recordProductInUse'
+  | 'createDeal'
+  | 'logActivity'
+  | 'addNextStep'
+  | 'addDocument';
 
 /** What may be moved to another person, which is a BD manager's alone (CLI 92). */
 export type Reassignable = 'client' | 'deal' | 'poc';
@@ -171,7 +183,10 @@ export const clientsPolicy = {
     return holdsARole(access) ? about.allow(actor, what) : nothingToSee(actor, what, null);
   },
 
-  /** A client's name, type and note: its owner's or a BD manager's (CLI 05). */
+  /**
+   * A client's name, type and note: its owner's or a BD manager's (CLI 05, #276). Not its owner,
+   * which is moved by a BD manager alone, through {@link clientsPolicy.reassign}.
+   */
   changeClient(actor: Actor, access: ClientsAccess, client: ClientSubject): Decision {
     return ownerOrBdManager(actor, access, 'changeClient', client.id, client.owner, 'client');
   },
@@ -260,7 +275,10 @@ export const clientsPolicy = {
     return ownerOrBdManager(actor, access, 'closeNextStep', step.id, step.owner, 'next step');
   },
 
-  /** Moving a client, a deal or a POC to somebody else, a CS lead included: a BD manager's (CLI 92). */
+  /**
+   * Moving a client, a deal or a POC to somebody else, a CS lead included: a BD manager's (CLI
+   * 92), and not the owner's, even of their own client (#276).
+   */
   reassign(actor: Actor, access: ClientsAccess, what: Reassignable, id: string): Decision {
     return bdManagersAlone(actor, access, 'reassign', id, `Only a BD manager can move a ${what}.`);
   },

@@ -46,7 +46,9 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   /* Whatever lines a migration seeded, these tests start from none. */
-  await admin.query('TRUNCATE clients_product, clients_product_line RESTART IDENTITY');
+  await admin.query(
+    'TRUNCATE clients_client_product, clients_product, clients_product_line RESTART IDENTITY',
+  );
   people = (await seed(admin)) as Record<string, string>;
 
   const grants = new ClientsRoleRepository(db);
@@ -348,6 +350,128 @@ describe('anybody who is not a BD manager', () => {
       expect([response.status, await response.json()]).toEqual([404, NO_SUCH_ROUTE]);
     }
     await unchanged();
+  });
+});
+
+/* #276. The kinds of institution a client may be, kept by a BD manager rather than fixed. */
+describe('client types', () => {
+  interface TypeJson {
+    id: string;
+    name: string;
+    retiredOn: string | null;
+  }
+
+  beforeEach(async () => {
+    /* The seed empties clients but leaves types: put back the five as migrated. */
+    await admin.query(
+      `DELETE FROM clients_client_type
+        WHERE name NOT IN ('Bank', 'Broker', 'Microfinance institution', 'Digital lender', 'DFI')`,
+    );
+    await admin.query('UPDATE clients_client_type SET retired_on = NULL');
+  });
+
+  async function types(): Promise<TypeJson[]> {
+    const response = await app.send('GET', '/api/clients/setup/client-types', bdManager);
+    expect(response.status).toBe(200);
+
+    return ((await response.json()) as { types: TypeJson[] }).types;
+  }
+
+  async function typeId(name: string): Promise<string> {
+    return (await types()).find((type) => type.name === name)?.id ?? '';
+  }
+
+  it('starts as the five, and takes another from a BD manager', async () => {
+    const response = await app.send('POST', '/api/clients/setup/client-types', bdManager, {
+      name: '  Insurance   company ',
+    });
+
+    expect([response.status, await response.json()]).toMatchObject([
+      201,
+      { name: 'Insurance company', retiredOn: null },
+    ]);
+    expect((await types()).map((type) => type.name)).toEqual([
+      'Bank',
+      'Broker',
+      'DFI',
+      'Digital lender',
+      'Insurance company',
+      'Microfinance institution',
+    ]);
+  });
+
+  it('names each once, whatever its case or spacing', async () => {
+    for (const response of [
+      await app.send('POST', '/api/clients/setup/client-types', bdManager, { name: ' bank' }),
+      await app.send('PATCH', `/api/clients/setup/client-types/${await typeId('DFI')}`, bdManager, {
+        name: 'BROKER',
+      }),
+    ]) {
+      expect([response.status, await response.json()]).toMatchObject([
+        409,
+        { error: 'ClientsNameTaken' },
+      ]);
+    }
+  });
+
+  it('is renamed, retired today and restored', async () => {
+    const dfi = await typeId('DFI');
+
+    await app.send('PATCH', `/api/clients/setup/client-types/${dfi}`, bdManager, {
+      name: 'Development finance institution',
+    });
+    await app.send('POST', `/api/clients/setup/client-types/${dfi}/retire`, bdManager);
+
+    expect((await types()).find((type) => type.id === dfi)).toEqual({
+      id: dfi,
+      name: 'Development finance institution',
+      retiredOn: PINNED_DATE,
+    });
+
+    await app.send('POST', `/api/clients/setup/client-types/${dfi}/restore`, bdManager);
+    expect((await types()).find((type) => type.id === dfi)?.retiredOn).toBeNull();
+  });
+
+  it('is told what to fix, and finds no type that is not there', async () => {
+    const blank = await app.send('POST', '/api/clients/setup/client-types', bdManager, {
+      name: ' ',
+    });
+    expect([blank.status, await blank.json()]).toMatchObject([400, { field: 'name' }]);
+
+    const tooLong = await app.send('POST', '/api/clients/setup/client-types', bdManager, {
+      name: 'x'.repeat(61),
+    });
+    expect(tooLong.status).toBe(400);
+
+    for (const id of ['987654321', 'not-an-id']) {
+      expect(
+        (await app.send('POST', `/api/clients/setup/client-types/${id}/retire`, bdManager)).status,
+      ).toBe(404);
+    }
+  });
+
+  it('is refused openly to an associate, and silently to anybody with no role', async () => {
+    const bank = await typeId('Bank');
+    const attempts = async (as: Asker) => [
+      await app.send('GET', '/api/clients/setup/client-types', as),
+      await app.send('POST', '/api/clients/setup/client-types', as, { name: 'Insurer' }),
+      await app.send('PATCH', `/api/clients/setup/client-types/${bank}`, as, { name: 'X' }),
+      await app.send('POST', `/api/clients/setup/client-types/${bank}/retire`, as),
+      await app.send('POST', `/api/clients/setup/client-types/${bank}/restore`, as),
+    ];
+
+    for (const response of await attempts(associate)) {
+      expect(response.status).toBe(403);
+    }
+    for (const as of [sysadmin, nobody]) {
+      for (const response of await attempts(as)) {
+        expect(response.status).toBe(404);
+      }
+    }
+    expect((await types()).map((type) => [type.name, type.retiredOn])).toContainEqual([
+      'Bank',
+      null,
+    ]);
   });
 });
 
