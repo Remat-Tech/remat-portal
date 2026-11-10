@@ -472,6 +472,10 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   ClientsRoleAlreadyHeld: 409,
   ClientsGranteeNotCurrent: 409,
   ClientsGrantAlreadyEnded: 409,
+  /** #293. Another line or product has the name; choosing another is the fix, but it is the
+      state of the setup that refuses it, as a role already held is. */
+  ClientsNameTaken: 409,
+  ClientsLineRetired: 409,
 };
 
 /**

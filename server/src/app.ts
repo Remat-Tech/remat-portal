@@ -79,6 +79,8 @@ import { DirectoryService } from './apps/directory/directory.service.js';
 import { type DirectoryLimits, directoryRoutes } from './apps/directory/routes.js';
 import { clientsRoutes } from './apps/clients/routes.js';
 import type { ClientsRoleRepository } from './apps/clients/role.db.js';
+import type { ClientsProductRepository } from './apps/clients/product.db.js';
+import { SetupService } from './apps/clients/setup.service.js';
 import { RoleService } from './apps/clients/role.service.js';
 import { clientsVisibility } from './apps/clients/visibility.js';
 import { clientsDoor } from './apps/clients/door.js';
@@ -212,6 +214,8 @@ export interface Application {
    * Mounted outside production only, while clients is being built.
    */
   clientsRoles?: ClientsRoleRepository;
+  /** #293. Product lines and products. Optional, so a test app without them has no setup routes. */
+  clientsProducts?: ClientsProductRepository;
   /** Where a 500 is written down. */
   failures?: FailureLog;
   /** Read from `SESSION_SECRET` when not given. */
@@ -546,7 +550,12 @@ export function buildApp(parts: Application): Express {
       '/api',
       clientsRoutes({
         door: clientsDoor(parts.guard, clientsRoles),
+        grants: clientsRoles,
         roles: new RoleService(parts.guard, clientsRoles, parts.employees),
+        setup:
+          parts.clientsProducts === undefined
+            ? undefined
+            : new SetupService(parts.guard, clientsRoles, parts.clientsProducts),
       }),
     );
   }

@@ -17,7 +17,7 @@ let sysadmin: string;
 let ama: string;
 let kofi: string;
 
-const TABLES = ['clients_role'];
+const TABLES = ['clients_role', 'clients_product_line', 'clients_product'];
 
 beforeAll(async () => {
   admin = new Client({ connectionString: testDatabaseUrl });
@@ -178,6 +178,206 @@ describe('a role', () => {
   });
 });
 
+/* ---------------------------------------------------------- lines and products, #293 */
+
+describe('a product line and its products', () => {
+  /* Names no seeded line or product has, so these tests stand whatever the seed holds. */
+  const LINE = `INSERT INTO clients_product_line (name) VALUES ($1) RETURNING id`;
+  const PRODUCT = `INSERT INTO clients_product (line_id, name) VALUES ($1, $2) RETURNING id`;
+
+  async function aLine(name = 'Testline'): Promise<string> {
+    return (await admin.query<{ id: string }>(LINE, [name])).rows[0].id;
+  }
+
+  it('puts every product in exactly one line that exists', async () => {
+    const line = await aLine();
+
+    expect(await refusedBy(PRODUCT, [line, 'Testproduct'])).toBeNull();
+    expect(await refusedBy(PRODUCT, [null, 'Lineless'])).toMatch(/line_id/);
+    expect(await refusedBy(PRODUCT, ['987654321', 'Nowhere'])).toBe('clients_product_line_id_fkey');
+  });
+
+  it('names each once, ignoring case and surrounding spaces', async () => {
+    const line = await aLine();
+
+    expect(await refusedBy(LINE, ['  testLINE '])).toBe('uq_clients_line_name');
+    expect(await refusedBy(PRODUCT, [line, 'Testproduct'])).toBeNull();
+    expect(await refusedBy(PRODUCT, [line, 'TESTPRODUCT  '])).toBe('uq_clients_product_name');
+  });
+
+  it('may give a product the name of its line, as Cloud9 and Riskflow are', async () => {
+    const line = await aLine();
+
+    expect(await refusedBy(PRODUCT, [line, 'Testline'])).toBeNull();
+  });
+
+  it('is never nameless', async () => {
+    const line = await aLine();
+
+    expect(await refusedBy(LINE, ['   '])).toBe('clients_line_named');
+    expect(await refusedBy(PRODUCT, [line, ''])).toBe('clients_product_named');
+  });
+
+  it('is written to the audit log by the database, with who did it', async () => {
+    await admin.query(
+      `SELECT set_config('lms.audit.actor', 'employee 7', true),
+              set_config('lms.audit.actor_employee_id', $1, true)`,
+      [sysadmin],
+    );
+    const line = await aLine();
+    const { rows } = await admin.query<{ id: string }>(PRODUCT, [line, 'Testproduct']);
+    await admin.query(`UPDATE clients_product SET retired_on = '2026-11-09' WHERE id = $1`, [
+      rows[0].id,
+    ]);
+
+    const log = await admin.query(
+      `SELECT entity, action, entity_id, actor_employee_id FROM audit_log
+        WHERE entity IN ('clients_product_line', 'clients_product') ORDER BY id`,
+    );
+    expect(log.rows).toEqual([
+      {
+        entity: 'clients_product_line',
+        action: 'CREATE',
+        entity_id: line,
+        actor_employee_id: sysadmin,
+      },
+      {
+        entity: 'clients_product',
+        action: 'CREATE',
+        entity_id: rows[0].id,
+        actor_employee_id: sysadmin,
+      },
+      {
+        entity: 'clients_product',
+        action: 'UPDATE',
+        entity_id: rows[0].id,
+        actor_employee_id: sysadmin,
+      },
+    ]);
+  });
+});
+
+/* ------------------------------------------- a retired product takes no new deals, #293 */
+
+/* The opportunities table does not exist yet. A stand in with the one column the rule reads, and
+   the trigger attached exactly as the opportunities migration attaches it. CLI 08. */
+describe('a retired product', () => {
+  const DEAL = 'INSERT INTO deal (product_id) VALUES ($1) RETURNING id';
+
+  async function aProduct(
+    line = 'Dealline',
+    product = 'Dealproduct',
+  ): Promise<{ line: string; product: string }> {
+    const lineId = (
+      await admin.query<{ id: string }>(
+        'INSERT INTO clients_product_line (name) VALUES ($1) RETURNING id',
+        [line],
+      )
+    ).rows[0].id;
+    const productId = (
+      await admin.query<{ id: string }>(
+        'INSERT INTO clients_product (line_id, name) VALUES ($1, $2) RETURNING id',
+        [lineId, product],
+      )
+    ).rows[0].id;
+
+    await admin.query(
+      'CREATE TEMP TABLE deal (id SERIAL PRIMARY KEY, product_id BIGINT, note TEXT) ON COMMIT DROP',
+    );
+    await admin.query(
+      'CREATE TRIGGER deal_product_takes_new_deals BEFORE INSERT OR UPDATE OF product_id ON deal ' +
+        'FOR EACH ROW EXECUTE FUNCTION clients_product_takes_new_deals()',
+    );
+
+    return { line: lineId, product: productId };
+  }
+
+  async function retire(table: 'clients_product' | 'clients_product_line', id: string) {
+    await admin.query(`UPDATE ${table} SET retired_on = '2026-10-30' WHERE id = $1`, [id]);
+  }
+
+  it('takes new deals while it is not retired', async () => {
+    const { product } = await aProduct();
+
+    expect(await refusedBy(DEAL, [product])).toBeNull();
+  });
+
+  it('takes no new deal once retired, and says so by name', async () => {
+    const { product } = await aProduct();
+    await retire('clients_product', product);
+
+    expect(await refusedBy(DEAL, [product])).toBe('clients_product_takes_new_deals');
+
+    await admin.query('SAVEPOINT why');
+    await expect(admin.query(DEAL, [product])).rejects.toThrow(
+      'Dealproduct is retired, so it takes no new deals.',
+    );
+    await admin.query('ROLLBACK TO SAVEPOINT why');
+  });
+
+  it('takes no new deal while its line is retired, even if restored by hand', async () => {
+    const { line, product } = await aProduct();
+    await retire('clients_product_line', line);
+
+    expect(await refusedBy(DEAL, [product])).toBe('clients_product_takes_new_deals');
+  });
+
+  it('keeps every deal it already had, which carries on and can still be changed', async () => {
+    const { product } = await aProduct();
+    const deal = (await admin.query<{ id: string }>(DEAL, [product])).rows[0].id;
+    await retire('clients_product', product);
+
+    expect(
+      await refusedBy("UPDATE deal SET note = 'still going' WHERE id = $1", [deal]),
+    ).toBeNull();
+    expect((await admin.query('SELECT count(*)::int AS n FROM deal')).rows[0].n).toBe(1);
+  });
+
+  it('takes no deal moved onto it from another product', async () => {
+    const live = await aProduct('Liveline', 'Liveproduct');
+    const deal = (await admin.query<{ id: string }>(DEAL, [live.product])).rows[0].id;
+    const old = (
+      await admin.query<{ id: string }>(
+        "INSERT INTO clients_product (line_id, name, retired_on) VALUES ($1, 'Oldproduct', '2026-01-01') RETURNING id",
+        [live.line],
+      )
+    ).rows[0].id;
+
+    expect(await refusedBy('UPDATE deal SET product_id = $2 WHERE id = $1', [deal, old])).toBe(
+      'clients_product_takes_new_deals',
+    );
+  });
+});
+
+/* --------------------------------------------------- the lines sold today, #293 */
+
+describe('the product lines as migrated', () => {
+  it('are the four lines sold today, each product in its line', async () => {
+    const { rows } = await admin.query<{ line: string; product: string }>(
+      `SELECT l.name AS line, p.name AS product
+         FROM clients_product_line l JOIN clients_product p ON p.line_id = l.id
+        WHERE l.retired_on IS NULL AND p.retired_on IS NULL`,
+    );
+    const byLine: Record<string, string[]> = {};
+    for (const { line, product } of rows) (byLine[line] ??= []).push(product);
+    for (const products of Object.values(byLine)) products.sort();
+
+    expect(byLine).toEqual({
+      Symphony: ['Cloud9', 'Federation', 'Messaging'],
+      'Dura Capital': ['CreditStudio', 'MicroStudio', 'OnboardStudio'],
+      Riskflow: ['ALM', 'Treasury'],
+      'AIC One': [
+        'ComplyOn',
+        'EngageNet',
+        'Orcaa.ai',
+        'Proba Analytics',
+        'Proba Workflows',
+        'X-Verdict',
+      ],
+    });
+  });
+});
+
 /* ---------------------------------------------------------- what lms_app may do */
 
 describe('the application role', () => {
@@ -203,7 +403,9 @@ describe('the application role', () => {
     expect(rows).toEqual([]);
   });
 
-  it('changes nothing about a grant but its end', async () => {
+  /* A grant is ended and nothing else; a line or product is renamed and retired, and a product
+     never changes line. No table may be updated whole. */
+  it('changes only the columns each table is meant to change', async () => {
     const { rows } = await admin.query<{ table: string }>(
       `SELECT t AS table FROM unnest($1::text[]) AS t
         WHERE has_table_privilege('lms_app', t, 'UPDATE')`,
@@ -211,15 +413,20 @@ describe('the application role', () => {
     );
     expect(rows).toEqual([]);
 
-    const columns = await admin.query<{ column_name: string }>(
-      `SELECT column_name FROM information_schema.column_privileges
-        WHERE grantee = 'lms_app' AND privilege_type = 'UPDATE' AND table_name = 'clients_role'
-        ORDER BY column_name`,
+    const columns = await admin.query<{ table_name: string; column_name: string }>(
+      `SELECT table_name, column_name FROM information_schema.column_privileges
+        WHERE grantee = 'lms_app' AND privilege_type = 'UPDATE' AND table_name = ANY($1)
+        ORDER BY table_name, column_name`,
+      [TABLES],
     );
-    expect(columns.rows.map((row) => row.column_name)).toEqual([
-      'ended_at',
-      'ended_by',
-      'ended_reason',
+    expect(columns.rows).toEqual([
+      { table_name: 'clients_product', column_name: 'name' },
+      { table_name: 'clients_product', column_name: 'retired_on' },
+      { table_name: 'clients_product_line', column_name: 'name' },
+      { table_name: 'clients_product_line', column_name: 'retired_on' },
+      { table_name: 'clients_role', column_name: 'ended_at' },
+      { table_name: 'clients_role', column_name: 'ended_by' },
+      { table_name: 'clients_role', column_name: 'ended_reason' },
     ]);
   });
 });

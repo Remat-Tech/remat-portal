@@ -697,8 +697,30 @@ export interface ClientsRoleTable {
   ended_reason: ColumnType<string | null, never, string>;
 }
 
+/**
+ * A product line: Symphony, Dura Capital. #293, Clients TDD 4.1. Renamed and retired, never
+ * deleted.
+ */
+export interface ClientsProductLineTable {
+  id: Generated<string>;
+  name: string;
+  retired_on: string | null;
+}
+
+/** A product, in exactly one line for good. #293, Clients TDD 4.1, SRS CLI 07. */
+export interface ClientsProductTable {
+  id: Generated<string>;
+  line_id: ColumnType<string, string, never>;
+  name: string;
+  retired_on: string | null;
+}
+
 export interface Database {
   app_user: AppUserTable;
+  /** #293. */
+  clients_product: ClientsProductTable;
+  /** #293. */
+  clients_product_line: ClientsProductLineTable;
   /** #274. */
   clients_role: ClientsRoleTable;
   /** FR 49. */

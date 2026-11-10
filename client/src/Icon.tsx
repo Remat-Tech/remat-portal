@@ -52,7 +52,10 @@ export type IconName =
   /* Putting up a photo. */
   | 'camera'
   /* Copying something to the clipboard. */
-  | 'copy';
+  | 'copy'
+  /* Clients setup's sections. */
+  | 'checklist'
+  | 'exit-reasons';
 
 const PATHS: Record<IconName, string> = {
   /** What you have: a calendar with days counted on it. */
@@ -123,6 +126,12 @@ const PATHS: Record<IconName, string> = {
   list: 'M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01',
   /** Removing one: a bin with its lid. */
   bin: 'M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13M10 11v5.5M14 11v5.5',
+  /** Clients checklists: a clipboard, its clip on top, one item ticked and one still to do. */
+  checklist:
+    'M8.5 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5h-2M9.5 3h5a.5.5 0 0 1 .5.5v2a.5.5 0 0 1-.5.5h-5a.5.5 0 0 1-.5-.5v-2a.5.5 0 0 1 .5-.5zM8 11.5l1.5 1.5 2.5-2.75M14 11.75h2.5M8.25 15.5h2.5V18h-2.5zM14 16.75h2.5',
+  /** Clients lost and exit reasons: a list of reasons, open on one side, and the way out of it. */
+  'exit-reasons':
+    'M15 5H6.5A1.5 1.5 0 0 0 5 6.5v11A1.5 1.5 0 0 0 6.5 19H15M8 9h4.5M8 12h3.5M8 15h4.5M14.5 12H21M18.5 9.5 21 12l-2.5 2.5',
   /** The password is hidden; pressing shows it. */
   eye: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
   /** The password is showing; pressing hides it again. */

@@ -3179,3 +3179,68 @@ export async function grantClientsRole(employeeId: string, role: ClientsRole): P
 export async function endClientsRole(grantId: string): Promise<void> {
   await request<unknown>('DELETE', `/api/clients/roles/${encodeURIComponent(grantId)}`);
 }
+
+/** Which parts of clients this person has. The server's answer, from its own policy. */
+export interface ClientsViews {
+  /** Products and lines. A BD manager's. */
+  setUp: boolean;
+  /** Who holds which role. A portal System Administrator's. */
+  manageRoles: boolean;
+}
+
+export async function clientsViews(): Promise<ClientsViews> {
+  return request<ClientsViews>('GET', '/api/clients/me');
+}
+
+/* ----------------------------------------------------- clients products and lines, #293 */
+
+export interface ClientsProduct {
+  id: string;
+  lineId: string;
+  name: string;
+  /** The day it stopped taking new deals, or null while it takes them. */
+  retiredOn: string | null;
+}
+
+export interface ClientsProductLine {
+  id: string;
+  name: string;
+  retiredOn: string | null;
+  /** By name, retired ones included. */
+  products: ClientsProduct[];
+}
+
+/** Every line and its products, by name. A BD manager's. */
+export async function productLines(): Promise<ClientsProductLine[]> {
+  const { lines } = await request<{ lines: ClientsProductLine[] }>(
+    'GET',
+    '/api/clients/setup/products',
+  );
+  return lines;
+}
+
+export async function addProductLine(name: string): Promise<void> {
+  await request<unknown>('POST', '/api/clients/setup/lines', { name });
+}
+
+export async function addProduct(lineId: string, name: string): Promise<void> {
+  await request<unknown>('POST', '/api/clients/setup/products', { lineId, name });
+}
+
+/** A line or a product, as the setup routes name them. */
+export type SetupThing = 'lines' | 'products';
+
+export async function renameSetupThing(thing: SetupThing, id: string, name: string): Promise<void> {
+  await request<unknown>('PATCH', `/api/clients/setup/${thing}/${encodeURIComponent(id)}`, {
+    name,
+  });
+}
+
+/** Retires a line (and every product in it) or a product, or restores one. */
+export async function retireOrRestore(
+  thing: SetupThing,
+  id: string,
+  act: 'retire' | 'restore',
+): Promise<void> {
+  await request<unknown>('POST', `/api/clients/setup/${thing}/${encodeURIComponent(id)}/${act}`);
+}
