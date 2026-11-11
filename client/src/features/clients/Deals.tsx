@@ -1,14 +1,20 @@
 import { useEffect, useState } from 'react';
 import {
+  answerDealPoc,
   type ClientPage,
   type ClientsOfferedProduct,
   changeDeal,
   type Currency,
+  DEAL_STAGES,
   type Deal,
   dealHistory,
+  type DealStage,
+  type DealStageChange,
+  dealStages,
   type DealValueChange,
   isNotSignedIn,
   type Money,
+  moveDeal,
   offeredProducts,
   openDeal,
   type WaitingOnWhat,
@@ -22,7 +28,8 @@ import { Dialog, DialogFoot, Field, useSending } from './ui';
 /**
  * A client's opportunities, which are also called deals: the figures across the top of the client
  * page, the open ones as a table, the ended ones folded away beneath, and opening and editing one.
- * #277, Clients SRS CLI 10 to CLI 17, CLI 75 to CLI 77, CLI 99.
+ * #277, Clients SRS CLI 10 to CLI 17, CLI 75 to CLI 77, CLI 99. Each one's stage, moving it, and
+ * whether it will have a POC: #278, CLI 18 to CLI 26.
  *
  * Whatever nobody has said about one, its value, probability or expected close, is said by name,
  * "No value", rather than left blank (CLI 06): an opportunity with no value is a gap somebody can
@@ -136,8 +143,10 @@ export function ClientDeals({
 }) {
   /* The dialog open: a new one, or one being edited. */
   const [open, setOpen] = useState<{ deal?: Deal } | null>(null);
-  /* The deal whose past values are showing, if any. */
+  /* The deal whose history is showing, if any. */
   const [history, setHistory] = useState<Deal | null>(null);
+  /* The deal being moved to another stage, if any. */
+  const [moving, setMoving] = useState<Deal | null>(null);
   const close = () => {
     setOpen(null);
   };
@@ -168,6 +177,7 @@ export function ClientDeals({
           onEdit={(deal) => {
             setOpen({ deal });
           }}
+          onMove={setMoving}
           onHistory={setHistory}
         />
       )}
@@ -179,7 +189,12 @@ export function ClientDeals({
               ? '1 ended opportunity'
               : `${String(ended.length)} ended opportunities`}
           </summary>
-          <DealTable deals={ended} onEdit={() => undefined} onHistory={setHistory} />
+          <DealTable
+            deals={ended}
+            onEdit={() => undefined}
+            onMove={() => undefined}
+            onHistory={setHistory}
+          />
         </details>
       )}
 
@@ -188,6 +203,22 @@ export function ClientDeals({
           deal={history}
           onClose={() => {
             setHistory(null);
+          }}
+          onSignedOut={onSignedOut}
+        />
+      )}
+
+      {moving === null ? null : (
+        <StageDialog
+          deal={moving}
+          clientName={client.name}
+          onMoved={() => {
+            setMoving(null);
+            onChanged();
+          }}
+          onAnswered={onChanged}
+          onClose={() => {
+            setMoving(null);
           }}
           onSignedOut={onSignedOut}
         />
@@ -223,10 +254,11 @@ function summaryOf(live: readonly Deal[], clientName: string): string {
 }
 
 /**
- * Opportunities as a table: product, expected close, what it is waiting on, and its value with
- * the probability under it. Its past values are open to anybody reading it (#277). Edit is offered
- * where the server says this person may: its owner or a BD manager, while it is open (CLI 13). An
- * ended one says how it ended instead.
+ * Opportunities as a table: product, stage, expected close, what it is waiting on, and its value
+ * with the probability under it. Its history, stages and values, is open to anybody reading it
+ * (#277, #278). Moving and editing are offered where the server says this person may: its owner or
+ * a BD manager, while it is open (CLI 13), and moving not while it is in its POC (CLI 24). An ended
+ * one says how it ended instead.
  *
  * On a phone each row becomes a card of its own, every cell labelled, since four columns do not
  * fit beside each other there (NFR CLI USA 02).
@@ -234,10 +266,12 @@ function summaryOf(live: readonly Deal[], clientName: string): string {
 function DealTable({
   deals,
   onEdit,
+  onMove,
   onHistory,
 }: {
   deals: readonly Deal[];
   onEdit: (deal: Deal) => void;
+  onMove: (deal: Deal) => void;
   onHistory: (deal: Deal) => void;
 }) {
   return (
@@ -245,6 +279,7 @@ function DealTable({
       <thead>
         <tr>
           <th scope="col">Product</th>
+          <th scope="col">Stage</th>
           <th scope="col">Expected close</th>
           <th scope="col">Waiting on</th>
           <th scope="col" className="is-figure">
@@ -266,6 +301,9 @@ function DealTable({
               {deal.statedInterest === null ? null : (
                 <small className="clients-deal-interest">“{deal.statedInterest}”</small>
               )}
+            </td>
+            <td data-label="Stage">
+              <StageCell deal={deal} />
             </td>
             <td data-label="Expected close">
               {deal.expectedClose === null ? (
@@ -295,16 +333,31 @@ function DealTable({
                 <button
                   type="button"
                   className="iconic action-icon is-history"
-                  title="Past values"
+                  title="History"
                   onClick={() => {
                     onHistory(deal);
                   }}
                 >
                   <Icon name="history" />
                   <span className="visually-hidden">
-                    Past values of the {deal.product.name} opportunity
+                    History of the {deal.product.name} opportunity
                   </span>
                 </button>
+                {deal.may.move ? (
+                  <button
+                    type="button"
+                    className="iconic action-icon is-edit"
+                    title="Move to another stage"
+                    onClick={() => {
+                      onMove(deal);
+                    }}
+                  >
+                    <Icon name="stage" />
+                    <span className="visually-hidden">
+                      Move the {deal.product.name} opportunity to another stage
+                    </span>
+                  </button>
+                ) : null}
                 {deal.outcome === 'OPEN' && deal.may.change ? (
                   <EditButton
                     label={`Edit the ${deal.product.name} opportunity`}
@@ -367,12 +420,244 @@ const WAITING_ON: { value: WaitingOnWhat; label: string; short: string }[] = [
   { value: 'OTHER', label: 'Something else', short: 'Other' },
 ];
 
-/* ------------------------------------------------------------------ its past values */
+/* ----------------------------------------------------------------------- its stage */
+
+/** How each stage is named on the screen. */
+const STAGE_NAME: Record<DealStage, string> = {
+  DISCOVERY: 'Discovery',
+  QUALIFICATION: 'Qualification',
+  PROPOSAL: 'Proposal',
+  NEGOTIATION: 'Negotiation',
+  CONTRACT_SIGNED: 'Contract signed',
+  POC: 'POC',
+  LIVE: 'Live',
+};
 
 /**
- * What a deal was worth and how likely to close, each time either changed, newest first, with who
- * changed it and when (#277). The oldest is what it was opened with. Whatever changed at each step
- * is the darker figure, so the eye finds what moved.
+ * Where a deal stands: the stage by name, a ladder of seven steps filled up to it, green once won,
+ * and under it whether it will have a POC, or that nobody has said (CLI 06, CLI 19).
+ */
+function StageCell({ deal }: { deal: Deal }) {
+  const at = DEAL_STAGES.indexOf(deal.stage);
+  const tone = deal.outcome === 'WON' ? ' is-won' : deal.outcome === 'OPEN' ? '' : ' is-ended';
+
+  return (
+    <>
+      <span>
+        {STAGE_NAME[deal.stage]}
+        <span className="visually-hidden">
+          , stage {at + 1} of {DEAL_STAGES.length}
+        </span>
+      </span>
+      <span className={`clients-ladder${tone}`} aria-hidden="true">
+        {DEAL_STAGES.map((stage, step) => (
+          <i key={stage} className={step <= at ? 'is-reached' : undefined} />
+        ))}
+      </span>
+      <small>
+        {deal.hasPoc === null ? (
+          <NotSet what="POC not decided" />
+        ) : deal.hasPoc ? (
+          'With a POC'
+        ) : (
+          'No POC'
+        )}
+      </small>
+    </>
+  );
+}
+
+/**
+ * Moving a deal to another stage (CLI 20 to CLI 25). Every stage is listed; the ones it cannot go
+ * to are greyed, with the server's own sentence saying why, so the rules are written once. A move
+ * back asks why (CLI 21). Until the contract is signed, whether there will be a POC is answered
+ * here too, and saved at once, since Contract signed waits on it (CLI 19); the stages open to it
+ * are then the server's fresh answer.
+ */
+function StageDialog({
+  deal: given,
+  clientName,
+  onMoved,
+  onAnswered,
+  onClose,
+  onSignedOut,
+}: {
+  deal: Deal;
+  clientName: string;
+  onMoved: () => void;
+  /** The POC question was answered, so the page behind is out of date. */
+  onAnswered: () => void;
+  onClose: () => void;
+  onSignedOut: () => void;
+}) {
+  const [deal, setDeal] = useState(given);
+  const [toStage, setToStage] = useState<DealStage | ''>(
+    given.moves.find((option) => option.open && !option.needsNote)?.stage ?? '',
+  );
+  const [note, setNote] = useState('');
+  const [answering, setAnswering] = useState(false);
+  const [answerProblem, setAnswerProblem] = useState<Problem | undefined>(undefined);
+  const sending = useSending(onMoved, onSignedOut);
+
+  const chosen = deal.moves.find((option) => option.stage === toStage);
+  const needsNote = chosen?.needsNote === true;
+  const busy = sending.busy || answering;
+
+  const answer = (hasPoc: boolean) => {
+    setAnswering(true);
+    setAnswerProblem(undefined);
+
+    answerDealPoc(deal.id, hasPoc)
+      .then((now) => {
+        setDeal(now);
+        /* A stage chosen that the answer has closed is no longer chosen. */
+        if (!now.moves.some((option) => option.stage === toStage && option.open)) {
+          setToStage('');
+        }
+        setAnswering(false);
+        onAnswered();
+      })
+      .catch((error: unknown) => {
+        if (isNotSignedIn(error)) {
+          onSignedOut();
+          return;
+        }
+        setAnswerProblem(problemFrom(error));
+        setAnswering(false);
+      });
+  };
+
+  return (
+    <Dialog
+      title={`Move the ${deal.product.name} deal`}
+      intro={`With ${clientName}. It is at ${STAGE_NAME[deal.stage]} now.`}
+      onClose={onClose}
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (toStage !== '') {
+            sending.send(() => moveDeal(deal.id, toStage, note));
+          }
+        }}
+      >
+        <fieldset className="clients-poc-question" disabled={busy || !deal.may.decidePoc}>
+          <legend>Will there be a POC?</legend>
+          <div className="clients-choice">
+            {[
+              { value: true, label: 'Yes' },
+              { value: false, label: 'No' },
+            ].map((one) => (
+              <button
+                key={one.label}
+                type="button"
+                aria-pressed={deal.hasPoc === one.value}
+                onClick={() => {
+                  answer(one.value);
+                }}
+              >
+                {one.label}
+              </button>
+            ))}
+          </div>
+          <p className="clients-field-hint">
+            {!deal.may.decidePoc
+              ? deal.hasPoc === true
+                ? 'Settled when the contract was signed. It goes live when its POC converts.'
+                : 'Settled when the contract was signed. It goes live straight from Contract signed.'
+              : deal.hasPoc === null
+                ? 'Needed before Contract signed. It can change until then.'
+                : deal.hasPoc
+                  ? 'It will go live when its POC converts. This can change until the contract is signed.'
+                  : 'It will go live straight from Contract signed. This can change until then.'}
+          </p>
+          {answerProblem === undefined ? null : <Notice problem={answerProblem} />}
+        </fieldset>
+
+        <fieldset className="clients-stage-choice" disabled={busy}>
+          <legend>Move to</legend>
+          <ol>
+            {deal.moves.map((option) => {
+              const here = option.stage === deal.stage;
+
+              return (
+                <li
+                  key={option.stage}
+                  className={`${option.open ? '' : 'is-closed'}${here ? ' is-here' : ''}`}
+                >
+                  <label>
+                    <input
+                      type="radio"
+                      name="toStage"
+                      value={option.stage}
+                      checked={toStage === option.stage}
+                      disabled={!option.open}
+                      onChange={() => {
+                        setToStage(option.stage);
+                      }}
+                    />
+                    <span>
+                      {STAGE_NAME[option.stage]}
+                      {here ? <span className="tag">Here now</span> : null}
+                      {option.open && option.needsNote ? <span className="tag">Back</span> : null}
+                    </span>
+                  </label>
+                  {option.open || here || option.why === null ? null : <small>{option.why}</small>}
+                </li>
+              );
+            })}
+          </ol>
+        </fieldset>
+
+        {toStage === 'LIVE' ? (
+          <p className="clients-stage-win">
+            This wins the deal, and adds {deal.product.name} to what {clientName} uses, from today.
+          </p>
+        ) : null}
+
+        <Field
+          label={needsNote ? 'Why it is going back' : 'Note'}
+          hint={
+            needsNote
+              ? 'Needed for a move back. Kept with the move.'
+              : 'Optional. Kept with the move.'
+          }
+          error={sending.errorFor('note')}
+        >
+          {({ id, describedBy }) => (
+            <textarea
+              id={id}
+              value={note}
+              rows={2}
+              maxLength={2000}
+              aria-describedby={describedBy}
+              onChange={(event) => {
+                setNote(event.target.value);
+              }}
+            />
+          )}
+        </Field>
+
+        <Other problem={sending.other(['note'])} />
+        <DialogFoot
+          busy={busy}
+          disabled={toStage === '' || (needsNote && note.trim() === '')}
+          doing="Moving…"
+          done={toStage === 'LIVE' ? 'Move to Live' : 'Move'}
+          onCancel={onClose}
+        />
+      </form>
+    </Dialog>
+  );
+}
+
+/* ---------------------------------------------------------------------- its history */
+
+/**
+ * A deal's history: every stage it has been at, with who moved it, when and why (#278, CLI 26),
+ * and what it was worth and how likely to close each time either changed (#277). Each newest
+ * first; the oldest is its opening. Whatever changed at each value step is the darker figure, so
+ * the eye finds what moved.
  */
 function HistoryDialog({
   deal,
@@ -384,11 +669,15 @@ function HistoryDialog({
   onSignedOut: () => void;
 }) {
   const [history, setHistory] = useState<DealValueChange[] | undefined>(undefined);
+  const [stages, setStages] = useState<DealStageChange[] | undefined>(undefined);
   const [problem, setProblem] = useState<Problem | undefined>(undefined);
 
   useEffect(() => {
-    dealHistory(deal.id)
-      .then(setHistory)
+    Promise.all([dealStages(deal.id), dealHistory(deal.id)])
+      .then(([moves, values]) => {
+        setStages(moves);
+        setHistory(values);
+      })
       .catch((error: unknown) => {
         if (isNotSignedIn(error)) {
           onSignedOut();
@@ -400,11 +689,43 @@ function HistoryDialog({
 
   return (
     <Dialog
-      title={`Past values: ${deal.product.name}`}
-      intro="Its value and chance of closing each time either changed, newest first."
+      title={`History: ${deal.product.name}`}
+      intro="Every stage it has been at, and its value and chance of closing each time either changed. Newest first."
       onClose={onClose}
     >
       {problem === undefined ? null : <Notice problem={problem} />}
+      {stages === undefined ? null : (
+        <>
+          <h3 className="clients-history-head">Stages</h3>
+          <ol className="clients-history">
+            {stages.map((change, at) => (
+              <li key={`${change.changedAt}-${String(at)}`}>
+                <div className="clients-history-figures">
+                  <span className="is-moved">
+                    {change.toOutcome === 'WON'
+                      ? 'Won at Live'
+                      : change.toOutcome === 'OPEN'
+                        ? STAGE_NAME[change.toStage]
+                        : `${OUTCOME[change.toOutcome]} at ${STAGE_NAME[change.toStage]}`}
+                  </span>
+                  {change.fromStage === null ? null : (
+                    <span>from {STAGE_NAME[change.fromStage]}</span>
+                  )}
+                  {at === 0 ? <span className="tag">Now</span> : null}
+                </div>
+                {change.note === null ? null : (
+                  <p className="clients-history-note">{change.note}</p>
+                )}
+                <small>
+                  {change.fromStage === null ? 'Opened' : 'Moved'} by {change.changedBy.name} ·{' '}
+                  {moment(change.changedAt)}
+                </small>
+              </li>
+            ))}
+          </ol>
+          <h3 className="clients-history-head">Values</h3>
+        </>
+      )}
       {history === undefined ? null : (
         <ol className="clients-history">
           {history.map((change, at) => {

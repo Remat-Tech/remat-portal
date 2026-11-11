@@ -27,6 +27,7 @@ import type { Grant } from './role.js';
 import type { ClientsRoleRepository } from './role.db.js';
 import type { RoleService, RolesScreen } from './role.service.js';
 import type { SetupService } from './setup.service.js';
+import type { StageService } from './stage.service.js';
 
 export interface ClientsRoutes {
   /**
@@ -44,6 +45,8 @@ export interface ClientsRoutes {
   clients?: ClientService;
   /** Deals. #277. Optional, for the same reason. */
   opportunities?: OpportunityService;
+  /** Moving deals up the ladder. #278. Optional, for the same reason. */
+  stages?: StageService;
 }
 
 export function clientsRoutes({
@@ -53,6 +56,7 @@ export function clientsRoutes({
   setup,
   clients,
   opportunities,
+  stages,
 }: ClientsRoutes): Router {
   const routes = Router();
 
@@ -81,6 +85,10 @@ export function clientsRoutes({
 
   if (opportunities !== undefined) {
     opportunityRoutes(routes, opportunities);
+  }
+
+  if (stages !== undefined) {
+    stageRoutes(routes, stages);
   }
 
   /** Who holds which role, and who could be granted one. */
@@ -370,6 +378,33 @@ function opportunityRoutes(routes: Router, opportunities: OpportunityService): v
     answer(async (request, response) =>
       opportunityAsJson(await opportunities.change(actorOf(response), idOf(request), request.body)),
     ),
+  );
+}
+
+/**
+ * A deal's stage, under `/clients/opportunities/:id`. #278, Clients SRS CLI 18 to CLI 26, TDD 11.
+ */
+function stageRoutes(routes: Router, stages: StageService): void {
+  /**
+   * `{ toStage, note? }`: moves the deal, forward by one stage or more, or back with a note
+   * before its contract is signed. Its owner's or a BD manager's, while it is open. Live wins it.
+   */
+  routes.post(
+    '/clients/opportunities/:id/stage',
+    answer(async (request, response) =>
+      opportunityAsJson(await stages.move(actorOf(response), idOf(request), request.body)),
+    ),
+  );
+
+  /** Every stage it has been at, newest first, with who moved it, when, and any note. */
+  routes.get(
+    '/clients/opportunities/:id/stages',
+    answer(async (request, response) => ({
+      stages: (await stages.stages(actorOf(response), idOf(request))).map((change) => ({
+        ...change,
+        changedAt: change.changedAt.toISOString(),
+      })),
+    })),
   );
 }
 

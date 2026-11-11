@@ -85,6 +85,7 @@ import type { ClientsContactRepository } from './apps/clients/contact.db.js';
 import type { ClientsProductInUseRepository } from './apps/clients/product-in-use.db.js';
 import type { ClientsOpportunityRepository } from './apps/clients/opportunity.db.js';
 import { OpportunityService } from './apps/clients/opportunity.service.js';
+import { StageService } from './apps/clients/stage.service.js';
 import type { ClientsProductRepository } from './apps/clients/product.db.js';
 import { SetupService } from './apps/clients/setup.service.js';
 import { RoleService } from './apps/clients/role.service.js';
@@ -610,6 +611,10 @@ export function buildApp(parts: Application): Express {
                 clientParts.productsInUse,
                 clientParts.opportunities,
               ),
+        stages:
+          clientParts === undefined
+            ? undefined
+            : new StageService(parts.guard, clientsRoles, clientParts.opportunities),
       }),
     );
   }

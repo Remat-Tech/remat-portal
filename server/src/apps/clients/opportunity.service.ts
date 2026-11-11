@@ -1,5 +1,6 @@
 /**
- * Opportunities, which the screen calls deals. #277, Clients SRS CLI 10 to CLI 17.
+ * Opportunities, which the screen calls deals. #277, Clients SRS CLI 10 to CLI 17, and whether
+ * each will have a POC, #278, CLI 19.
  *
  * Every method asks `clientsPolicy` first, before reading the request or looking anything up, so
  * somebody refused learns nothing from what they sent. Stages and outcomes are not changed here:
@@ -25,12 +26,14 @@ import {
   AlreadyOpen,
   type ClientsOpportunityRepository,
   Ended,
+  PocDecisionSettled,
   ProductRetired,
 } from './opportunity.db.js';
 import { type ClientsAccess, clientsPolicy } from './policy.js';
 import { isAnId } from './product.js';
 import type { ClientsProductInUseRepository } from './product-in-use.db.js';
 import type { ClientsRoleRepository } from './role.db.js';
+import { isSigned, optionsOf, PocDecisionFixed } from './stage.js';
 
 export class OpportunityService {
   constructor(
@@ -134,9 +137,18 @@ export class OpportunityService {
 
     const change = readOpportunityChange(body);
 
+    /* CLI 19. Answered, and changed as often as it needs to be, until the contract is signed;
+       then settled. Sending the answer it already has is no change, so a form that sends every
+       field is not refused for it. */
+    if (change.hasPoc !== undefined && change.hasPoc !== deal.hasPoc && isSigned(deal.stage)) {
+      throw new PocDecisionFixed(deal.product.name);
+    }
+
     try {
       await this.opportunities.change(actor, id, change);
     } catch (error) {
+      /* Signed between the look and the write. */
+      if (error instanceof PocDecisionSettled) throw new PocDecisionFixed(deal.product.name);
       if (error instanceof Ended) {
         /* Ended between the look and the write: say how, as it is now. */
         const now = await this.opportunityOrRefuse(id);
@@ -165,14 +177,17 @@ export class OpportunityService {
 
 /**
  * A deal, with the policy's answers about it for the screen to offer. Editing an ended deal is
- * offered to nobody, since the database refuses it whoever asks.
+ * offered to nobody, since the database refuses it whoever asks; nor is moving a deal in its POC,
+ * which its POC moves (CLI 24), nor answering the POC question once it is settled (CLI 19).
  */
 export function viewOf(actor: Actor, access: ClientsAccess, deal: Opportunity): DealView {
+  const change = deal.outcome === 'OPEN' && clientsPolicy.changeDeal(actor, access, deal).allowed;
+  const move = change && deal.stage !== 'POC';
+
   return {
     ...deal,
-    may: {
-      change: deal.outcome === 'OPEN' && clientsPolicy.changeDeal(actor, access, deal).allowed,
-    },
+    may: { change, move, decidePoc: change && !isSigned(deal.stage) },
+    moves: move ? optionsOf(deal) : [],
   };
 }
 

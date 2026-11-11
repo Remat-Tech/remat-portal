@@ -20,6 +20,7 @@ import { ClientsRoleRepository } from '../../src/apps/clients/role.db.js';
 import { RoleService } from '../../src/apps/clients/role.service.js';
 import { clientsRoutes } from '../../src/apps/clients/routes.js';
 import { SetupService } from '../../src/apps/clients/setup.service.js';
+import { StageService } from '../../src/apps/clients/stage.service.js';
 import { clientsVisibility } from '../../src/apps/clients/visibility.js';
 import type { RecordingDenialLog } from './recording-denials.js';
 
@@ -92,6 +93,7 @@ export async function startClientsApp(
       productsInUse,
       opportunities,
     ),
+    stages: new StageService(guard, grants, opportunities),
   });
 
   app.use('/api', router);

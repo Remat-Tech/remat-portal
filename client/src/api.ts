@@ -3334,13 +3334,44 @@ export interface Money {
 export type WaitingOnWhat =
   'DEMO' | 'PROPOSAL_RESPONSE' | 'PAPERWORK' | 'SIGNATURE' | 'CLIENT_DECISION' | 'OTHER';
 
+/** The seven stages, in order (CLI 18). #278. */
+export const DEAL_STAGES = [
+  'DISCOVERY',
+  'QUALIFICATION',
+  'PROPOSAL',
+  'NEGOTIATION',
+  'CONTRACT_SIGNED',
+  'POC',
+  'LIVE',
+] as const;
+
+export type DealStage = (typeof DEAL_STAGES)[number];
+
+/**
+ * A stage a deal could be moved to by hand: whether it is open, and the server's sentence where it
+ * is not. The server works these out from the same rules it moves by. #278.
+ */
+export interface DealStageOption {
+  stage: DealStage;
+  open: boolean;
+  why: string | null;
+  /** A move back, which needs a note saying why. */
+  needsNote: boolean;
+}
+
 /** A deal: one client and one product. Null fields are missing, shown as such (CLI 06). */
 export interface Deal {
   id: string;
   client: { id: string; name: string };
   product: { id: string; name: string; lineName: string };
   owner: ClientsNamed;
+  /** How far it has come, or where it ended. #278. */
+  stage: DealStage;
   outcome: 'OPEN' | 'WON' | 'LOST' | 'EXITED';
+  /** Whether it will have a POC: null until somebody says, fixed once signed. */
+  hasPoc: boolean | null;
+  /** The day it was won, lost or exited, 2026-11-11; null while open. */
+  endedOn: string | null;
   value: Money | null;
   /** A whole percentage. */
   probability: number | null;
@@ -3352,7 +3383,13 @@ export interface Deal {
   may: {
     /** Its figures and words: its owner's or a BD manager's, while it is open. */
     change: boolean;
+    /** Moving its stage by hand: the same, while it is open and not in its POC. */
+    move: boolean;
+    /** Answering whether it will have a POC: the same, until its contract is signed. */
+    decidePoc: boolean;
   };
+  /** Every stage, where the reader may move it; none where they may not. */
+  moves: DealStageOption[];
 }
 
 /** A new deal, as the form sends it. The owner is whoever sends it. */
@@ -3366,6 +3403,8 @@ export interface NewDeal {
   expectedClose: { half: '' | 'H1' | 'H2'; year: number | null } | null;
   waitingOn: { on: WaitingOnWhat; note: string } | null;
   statedInterest: string;
+  /** Whether it will have a POC, or null where nobody knows yet. Left out, it is left as it is. */
+  hasPoc?: boolean | null;
 }
 
 /** Opens a deal, owned by whoever asks. Refused if the client has one open for the product. */
@@ -3398,6 +3437,41 @@ export type DealChange = Omit<NewDeal, 'clientId' | 'productId'>;
 /** Edits a deal. Its owner's or a BD manager's, while it is open. */
 export async function changeDeal(id: string, change: DealChange): Promise<Deal> {
   return request<Deal>('PATCH', `/api/clients/opportunities/${encodeURIComponent(id)}`, change);
+}
+
+/** Answers whether a deal will have a POC, and nothing else. Until its contract is signed. */
+export async function answerDealPoc(id: string, hasPoc: boolean | null): Promise<Deal> {
+  return request<Deal>('PATCH', `/api/clients/opportunities/${encodeURIComponent(id)}`, {
+    hasPoc,
+  });
+}
+
+/** Moves a deal to another stage. A move back needs a note. Live wins it. #278. */
+export async function moveDeal(id: string, toStage: DealStage, note: string): Promise<Deal> {
+  return request<Deal>('POST', `/api/clients/opportunities/${encodeURIComponent(id)}/stage`, {
+    toStage,
+    note,
+  });
+}
+
+/** One move a deal made, or its opening at Discovery. */
+export interface DealStageChange {
+  /** Null where this is the deal being opened. */
+  fromStage: DealStage | null;
+  toStage: DealStage;
+  toOutcome: Deal['outcome'];
+  note: string | null;
+  changedBy: ClientsNamed;
+  changedAt: string;
+}
+
+/** Every stage a deal has been at, newest first. The oldest is its opening. */
+export async function dealStages(id: string): Promise<DealStageChange[]> {
+  const { stages } = await request<{ stages: DealStageChange[] }>(
+    'GET',
+    `/api/clients/opportunities/${encodeURIComponent(id)}/stages`,
+  );
+  return stages;
 }
 
 /** A product that may be added to a client. */

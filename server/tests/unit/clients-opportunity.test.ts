@@ -48,6 +48,7 @@ describe('a new deal', () => {
       expectedClose: { half: 'H1', year: 2027 },
       waitingOn: { on: 'PROPOSAL_RESPONSE', note: 'Their board meets on the 20th' },
       statedInterest: 'Wants to move SME lending off spreadsheets.',
+      hasPoc: null,
     });
   });
 
@@ -61,6 +62,7 @@ describe('a new deal', () => {
       expectedClose: null,
       waitingOn: null,
       statedInterest: null,
+      hasPoc: null,
     });
   });
 
