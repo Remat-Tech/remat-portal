@@ -2138,6 +2138,475 @@ a.portal-app:hover {
   margin-top: 0.6rem;
 }
 
+/* ------------------------------------------------------------ the client page, #277 */
+
+/* Laid out as the client page mockup: who the client is and its figures across the top, then
+   its opportunities beside a narrower column of what it uses, who to talk to and the note. */
+
+.clients-client-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--gap);
+  margin-bottom: var(--gap-lg);
+}
+
+/* The name, and the pencil that edits it beside it rather than across the page. */
+.clients-client-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.5rem 0 0.35rem;
+}
+
+.clients-client-head h2 {
+  margin: 0;
+  font-family: var(--face-display);
+  font-size: clamp(2rem, 5vw, 2.6rem);
+  line-height: 1.05;
+  overflow-wrap: anywhere;
+}
+
+.clients-client-lede {
+  margin: 0;
+  color: var(--ink-soft);
+}
+
+/* The figures: a strip across the page, each tile a small capital label over the figure. The
+   chance of closing is one short percentage, so its tile is only as wide as its label, and the
+   count and the values share the rest. */
+.clients-figures {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) max-content;
+  margin: 0 0 var(--gap-lg);
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.clients-figures > div {
+  display: grid;
+  align-content: start;
+  gap: 0.4rem;
+  min-width: 0;
+  padding: 1rem 1.25rem;
+}
+
+.clients-figures > div + div {
+  border-left: 1px solid var(--line);
+}
+
+.clients-figures dt,
+.clients-side-head h3 {
+  color: var(--ink-faint);
+  font-family: var(--face-text);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.clients-figures dd {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0;
+}
+
+/* Cedis and dollars side by side, never one sum (CLI 75). */
+.clients-figure-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 1rem;
+}
+
+.clients-figure {
+  font-family: var(--face-figure);
+  font-size: 1.5rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.clients-figure.is-missing {
+  color: var(--away-ink);
+  font-family: var(--face-text);
+  font-size: 1.125rem;
+}
+
+/* How many open ones a total leaves out (CLI 77). */
+.clients-figure-note {
+  color: var(--away-ink);
+  font-size: 0.8125rem;
+}
+
+/* Two columns, the narrower on the right; one on a phone, opportunities first. */
+.clients-client-body {
+  display: grid;
+  grid-template-columns: minmax(0, 2.6fr) minmax(16rem, 1fr);
+  align-items: start;
+  gap: var(--gap-lg);
+}
+
+.clients-client-main,
+.clients-client-side {
+  display: grid;
+  gap: var(--gap-lg);
+  min-width: 0;
+}
+
+/* A card on the page: the opportunities, and each part of the side column. */
+.clients-panel {
+  min-width: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.clients-panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: var(--gap);
+  padding: 1.1rem 1.25rem 0.9rem;
+}
+
+.clients-panel-head h3 {
+  margin: 0;
+  font-family: var(--face-text);
+  font-size: 1.125rem;
+  font-weight: 600;
+}
+
+.clients-panel-head .muted {
+  margin: 0.2rem 0 0;
+}
+
+/* The side column's cards: a small capital heading, a short list, a plus to add one. */
+.clients-client-side .clients-panel {
+  padding: 1rem 1.25rem;
+}
+
+.clients-side-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--gap);
+  margin-bottom: 0.6rem;
+}
+
+.clients-side-head h3 {
+  margin: 0;
+}
+
+.clients-client-side .muted,
+.clients-client-side .clients-note {
+  margin: 0;
+}
+
+.clients-side-list {
+  display: grid;
+  gap: 0.85rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.clients-side-list > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 0.25rem 0.75rem;
+}
+
+.clients-side-list > li > div {
+  display: grid;
+  gap: 0.1rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.clients-side-list small {
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+}
+
+.clients-side-list > li.is-ended strong {
+  color: var(--ink-soft);
+}
+
+.clients-side-list > li > .notice {
+  grid-column: 1 / -1;
+}
+
+/* Email and phone under the name, the card's full width, each on its own line. */
+.clients-contact-ways {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 0.1rem;
+  min-width: 0;
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.clients-client-side a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.clients-client-side a:hover {
+  text-decoration: underline;
+}
+
+/* The opportunities table. */
+.clients-deals {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.clients-deals th {
+  padding: 0.6rem 1.25rem;
+  background: color-mix(in srgb, var(--ink) 2%, var(--card));
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-faint);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.clients-deals td {
+  padding: 0.85rem 1.25rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.clients-deals tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.clients-deals td > small {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+}
+
+.clients-deals .is-figure {
+  text-align: right;
+}
+
+/* An amount and its currency, on one line whatever the column's width. */
+.clients-deals td.is-figure > span,
+.clients-deals td.is-figure > small {
+  white-space: nowrap;
+}
+
+.clients-deals td.is-figure > span {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.clients-deals .clients-deals-actions {
+  width: 1%;
+  padding-left: 0;
+  white-space: nowrap;
+}
+
+.clients-deals tr.is-ended strong {
+  color: var(--ink-soft);
+}
+
+/* What the client said, under the product: kept to two lines in the table. */
+.clients-deal-interest {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-style: italic;
+}
+
+/* An opportunity's buttons: how it ended, its past values, and edit. */
+.clients-deal-buttons {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.clients-deal-buttons .tag {
+  margin-right: 0.35rem;
+}
+
+.action-icon.is-history {
+  color: var(--ink-soft);
+}
+
+.action-icon.is-history:hover:not(:disabled) {
+  border-color: transparent;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Its past values, newest first: the figures, then who and when. What moved is the darker. */
+.clients-history {
+  display: grid;
+  gap: 0;
+  margin: 0 0 var(--gap);
+  padding: 0;
+  list-style: none;
+}
+
+.clients-history > li {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.75rem 0;
+}
+
+.clients-history > li + li {
+  border-top: 1px solid var(--line);
+}
+
+.clients-history-figures {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1rem;
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.clients-history-figures .is-moved {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.clients-history small {
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+}
+
+/* Nobody has said: amber, and in words, so it reads as a gap to fill (CLI 06). */
+.clients-not-set {
+  color: var(--away-ink);
+  font-family: var(--face-text);
+  font-weight: 500;
+}
+
+.clients-deals td.is-figure > .clients-not-set {
+  font-family: var(--face-text);
+}
+
+/* Ended opportunities, and former contacts: there, folded away. */
+.clients-ended {
+  border-top: 1px solid var(--line);
+}
+
+.clients-ended > summary {
+  padding: 0.8rem 1.25rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.clients-client-side .clients-ended {
+  margin-top: 0.85rem;
+  border-top: 0;
+}
+
+.clients-client-side .clients-ended > summary {
+  padding: 0 0 0.6rem;
+}
+
+@media (max-width: 56rem) {
+  .clients-client-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* A phone: the tiles stack, and each opportunity becomes a card of labelled lines. */
+@media (max-width: 40rem) {
+  .clients-figures {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .clients-figures > div + div {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  .clients-deals thead {
+    display: none;
+  }
+
+  .clients-deals,
+  .clients-deals tbody,
+  .clients-deals tr,
+  .clients-deals td {
+    display: block;
+  }
+
+  .clients-deals tr {
+    position: relative;
+    padding: 0.9rem 1.25rem;
+    border-top: 1px solid var(--line);
+  }
+
+  .clients-deals td {
+    padding: 0.2rem 0;
+    border: 0;
+  }
+
+  .clients-deals td[data-label]:not([data-label='Product'])::before {
+    content: attr(data-label) ': ';
+    color: var(--ink-faint);
+    font-size: 0.8125rem;
+  }
+
+  .clients-deals .is-figure {
+    text-align: left;
+  }
+
+  .clients-deals td.is-figure > small {
+    display: inline;
+    margin-left: 0.4rem;
+  }
+
+  .clients-deals .clients-deals-actions {
+    position: absolute;
+    top: 0.75rem;
+    right: 1rem;
+    width: auto;
+  }
+
+  .clients-deals td[data-label='Product'] {
+    padding-right: 3rem;
+  }
+}
+
+/* The new and edit form: a currency and its amount, or a half and its year, on one line. */
+.clients-deal-money,
+.clients-deal-close {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.clients-deal-money select,
+.clients-deal-close select {
+  flex: 0 0 auto;
+  width: auto;
+}
+
+.clients-deal-money input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 .clients-check {
   display: flex;
   align-items: center;
@@ -8294,6 +8763,20 @@ button.linkish.file-name {
 .action-icon.is-edit:hover:not(:disabled) {
   border-color: transparent;
   background: var(--accent-soft);
+}
+
+/* A plus, filled with the accent's tint so that it reads as a button on its own. */
+.iconic.action-icon.is-add {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--card));
+}
+
+.iconic.action-icon.is-add:hover:not(:disabled),
+.iconic.action-icon.is-add:focus-visible {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .action-icon.is-remove {

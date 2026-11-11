@@ -20,15 +20,21 @@ import {
   offeredProducts,
   removeOrRestoreContact,
 } from '../../api';
-import { EditButton } from '../../ActionButtons';
+import { AddButton, EditButton } from '../../ActionButtons';
 import { day } from '../../format';
 import { Icon } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
+import { ClientDeals, OpportunityFigures } from './Deals';
 import { Dialog, DialogFoot, Field, Missing, useSending } from './ui';
 
 /**
- * One client: who they are, the people the department deals with there, and the products they
- * already use. #276, Clients SRS CLI 01 to CLI 06, CLI 99.
+ * One client: who they are, what is in play with them and what it is worth, the products they
+ * already use, and the people the department deals with there. #276, #277, Clients SRS CLI 01
+ * to CLI 06, CLI 99.
+ *
+ * Laid out as the client page mockup: the client and its figures across the top, its open
+ * opportunities beside a column of what it uses, who to talk to and the note. Its activity and
+ * proposals join the left column once they are built (#280, #281).
  *
  * Everything optional that nobody has filled in is said by name, "No email", rather than left
  * blank (CLI 06). What the page offers to change is the server's answer in `may`; the server
@@ -97,163 +103,171 @@ export function ClientView({ id, onSignedOut }: { id: string; onSignedOut: () =>
 
       {client === undefined ? null : (
         <>
-          <header className="clients-setup-head">
-            <div>
-              <h2>{client.name}</h2>
-              <span className="tag">{client.type.name}</span>
-            </div>
+          {/* -------------------------------------------------------------- who */}
 
-            {client.may.change ? (
-              <button
-                type="button"
-                onClick={() => {
-                  setOpen({ what: 'details' });
-                }}
-              >
-                <Icon name="pencil" />
-                Edit details
-              </button>
-            ) : null}
+          <header className="clients-client-head">
+            <div>
+              <span className="tag">{client.type.name}</span>
+              <div className="clients-client-title">
+                <h2>{client.name}</h2>
+                {client.may.change ? (
+                  <EditButton
+                    label={`Edit ${client.name}'s name, type and note`}
+                    onClick={() => {
+                      setOpen({ what: 'details' });
+                    }}
+                  />
+                ) : null}
+              </div>
+              <p className="clients-client-lede">
+                Owned by {client.owner.name}.{' '}
+                {current.length === 0
+                  ? 'No contacts yet.'
+                  : `Contacts: ${listed(current.map((contact) => contact.name))}.`}
+                {client.may.reassign ? (
+                  <>
+                    {' '}
+                    <button
+                      type="button"
+                      className="linkish"
+                      onClick={() => {
+                        setOpen({ what: 'owner' });
+                      }}
+                    >
+                      Move to somebody else
+                    </button>
+                  </>
+                ) : null}
+              </p>
+            </div>
           </header>
 
-          <dl className="clients-details">
-            <div>
-              <dt>Owner</dt>
-              <dd>
-                {client.owner.name}
-                {client.may.reassign ? (
-                  <button
-                    type="button"
-                    className="linkish"
-                    onClick={() => {
-                      setOpen({ what: 'owner' });
-                    }}
-                  >
-                    Move to somebody else
-                  </button>
-                ) : null}
-              </dd>
+          {/* ------------------------------------------------------- the figures */}
+
+          <OpportunityFigures deals={client.opportunities} />
+
+          <div className="clients-client-body">
+            {/* ------------------------------------------------- opportunities */}
+
+            <div className="clients-client-main">
+              <ClientDeals client={client} onChanged={load} onSignedOut={onSignedOut} />
             </div>
-            <div>
-              <dt>Note</dt>
-              <dd className="clients-note">
-                {client.note === null ? <Missing what="note" /> : client.note}
-              </dd>
-            </div>
-          </dl>
 
-          {/* ------------------------------------------------------------ contacts */}
+            <aside className="clients-client-side">
+              {/* ---------------------------------------------- already using */}
 
-          <section className="clients-part" aria-labelledby="clients-contacts-heading">
-            <header className="clients-part-head">
-              <h3 id="clients-contacts-heading">Contacts</h3>
-              {client.may.contribute ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpen({ what: 'contact' });
-                  }}
-                >
-                  <Icon name="plus" />
-                  Add a contact
-                </button>
-              ) : null}
-            </header>
-
-            {current.length === 0 ? (
-              <p className="muted">Nobody at {client.name} is recorded yet.</p>
-            ) : (
-              <ul className="clients-rows">
-                {current.map((contact) => (
-                  <ContactRow
-                    key={contact.id}
-                    contact={contact}
-                    may={client.may.contribute}
-                    onEdit={() => {
-                      setOpen({ what: 'contact', contact });
-                    }}
-                    onChanged={load}
-                    onSignedOut={onSignedOut}
-                  />
-                ))}
-              </ul>
-            )}
-
-            {removed.length === 0 ? null : (
-              <details className="clients-removed">
-                <summary>
-                  {removed.length === 1
-                    ? '1 former contact'
-                    : `${String(removed.length)} former contacts`}
-                </summary>
-                <ul className="clients-rows">
-                  {removed.map((contact) => (
-                    <ContactRow
-                      key={contact.id}
-                      contact={contact}
-                      may={client.may.contribute}
-                      onEdit={() => undefined}
-                      onChanged={load}
-                      onSignedOut={onSignedOut}
+              <section className="clients-panel" aria-labelledby="clients-using-heading">
+                <header className="clients-side-head">
+                  <h3 id="clients-using-heading">Already using</h3>
+                  {client.may.contribute ? (
+                    <AddButton
+                      label="Add a product they use"
+                      onClick={() => {
+                        setOpen({ what: 'add-product' });
+                      }}
                     />
-                  ))}
-                </ul>
-              </details>
-            )}
-          </section>
+                  ) : null}
+                </header>
 
-          {/* ------------------------------------------------------------ products */}
+                {client.products.length === 0 ? (
+                  <p className="muted">Nothing recorded yet.</p>
+                ) : (
+                  <ul className="clients-side-list">
+                    {client.products.map((product) => (
+                      <li
+                        key={product.productId}
+                        className={product.endedOn === null ? undefined : 'is-ended'}
+                      >
+                        <div>
+                          <strong>{product.productName}</strong>
+                          <small>
+                            {product.lineName} · since {day(product.sinceOn)}
+                            {product.endedOn === null ? null : `, stopped ${day(product.endedOn)}`}
+                          </small>
+                        </div>
+                        {client.may.contribute ? (
+                          <EditButton
+                            label={`Change the dates for ${product.productName}`}
+                            onClick={() => {
+                              setOpen({ what: 'product-dates', product });
+                            }}
+                          />
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
 
-          <section className="clients-part" aria-labelledby="clients-products-heading">
-            <header className="clients-part-head">
-              <h3 id="clients-products-heading">Products in use</h3>
-              {client.may.contribute ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpen({ what: 'add-product' });
-                  }}
-                >
-                  <Icon name="plus" />
-                  Add a product
-                </button>
-              ) : null}
-            </header>
+              {/* --------------------------------------------------- contacts */}
 
-            {client.products.length === 0 ? (
-              <p className="muted">No products are recorded for {client.name} yet.</p>
-            ) : (
-              <ul className="clients-rows">
-                {client.products.map((product) => (
-                  <li
-                    key={product.productId}
-                    className={`clients-row${product.endedOn === null ? '' : ' is-ended'}`}
-                  >
-                    <div className="clients-row-main">
-                      <strong>{product.productName}</strong>
-                      <small>{product.lineName}</small>
-                    </div>
-                    <div className="clients-row-meta">
-                      <span>Since {day(product.sinceOn)}</span>
-                      {product.endedOn === null ? (
-                        <span className="tag">In use</span>
-                      ) : (
-                        <span className="clients-retired">Stopped {day(product.endedOn)}</span>
-                      )}
-                    </div>
-                    {client.may.contribute ? (
-                      <EditButton
-                        label={`Change the dates for ${product.productName}`}
-                        onClick={() => {
-                          setOpen({ what: 'product-dates', product });
+              <section className="clients-panel" aria-labelledby="clients-contacts-heading">
+                <header className="clients-side-head">
+                  <h3 id="clients-contacts-heading">Contacts</h3>
+                  {client.may.contribute ? (
+                    <AddButton
+                      label="Add a contact"
+                      onClick={() => {
+                        setOpen({ what: 'contact' });
+                      }}
+                    />
+                  ) : null}
+                </header>
+
+                {current.length === 0 ? (
+                  <p className="muted">Nobody at {client.name} is recorded yet.</p>
+                ) : (
+                  <ul className="clients-side-list">
+                    {current.map((contact) => (
+                      <ContactRow
+                        key={contact.id}
+                        contact={contact}
+                        may={client.may.contribute}
+                        onEdit={() => {
+                          setOpen({ what: 'contact', contact });
                         }}
+                        onChanged={load}
+                        onSignedOut={onSignedOut}
                       />
-                    ) : null}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
+                    ))}
+                  </ul>
+                )}
+
+                {removed.length === 0 ? null : (
+                  <details className="clients-ended">
+                    <summary>
+                      {removed.length === 1
+                        ? '1 former contact'
+                        : `${String(removed.length)} former contacts`}
+                    </summary>
+                    <ul className="clients-side-list">
+                      {removed.map((contact) => (
+                        <ContactRow
+                          key={contact.id}
+                          contact={contact}
+                          may={client.may.contribute}
+                          onEdit={() => undefined}
+                          onChanged={load}
+                          onSignedOut={onSignedOut}
+                        />
+                      ))}
+                    </ul>
+                  </details>
+                )}
+              </section>
+
+              {/* ------------------------------------------------------- note */}
+
+              <section className="clients-panel" aria-labelledby="clients-note-heading">
+                <header className="clients-side-head">
+                  <h3 id="clients-note-heading">Note</h3>
+                </header>
+                <p className="clients-note">
+                  {client.note === null ? <Missing what="note" /> : client.note}
+                </p>
+              </section>
+            </aside>
+          </div>
 
           {open?.what === 'details' ? (
             <DetailsDialog
@@ -303,6 +317,13 @@ export function ClientView({ id, onSignedOut }: { id: string; onSignedOut: () =>
   );
 }
 
+/** "Ama", "Ama and Kofi", "Ama, Kofi and Esi". */
+function listed(names: readonly string[]): string {
+  return names.length <= 1
+    ? (names[0] ?? '')
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1] ?? ''}`;
+}
+
 /** Which dialog is open, and on what. */
 type Open =
   | { what: 'details' }
@@ -318,7 +339,10 @@ interface DialogProps {
   onSignedOut: () => void;
 }
 
-/** One contact: the name, and each detail or the word for its absence. */
+/**
+ * One contact: the name, the job title under it, and how to reach them, each said by name where
+ * nobody has filled it in (CLI 06).
+ */
 function ContactRow({
   contact,
   may,
@@ -355,26 +379,10 @@ function ContactRow({
   };
 
   return (
-    <li className={`clients-row${isRemoved ? ' is-ended' : ''}`}>
-      <div className="clients-row-main">
+    <li className={isRemoved ? 'is-ended' : undefined}>
+      <div>
         <strong>{contact.name}</strong>
         <small>{contact.jobTitle ?? <Missing what="job title" />}</small>
-      </div>
-      <div className="clients-row-meta">
-        <span>
-          {contact.email === null ? (
-            <Missing what="email" />
-          ) : (
-            <a href={`mailto:${contact.email}`}>{contact.email}</a>
-          )}
-        </span>
-        <span>
-          {contact.phone === null ? (
-            <Missing what="phone" />
-          ) : (
-            <a href={`tel:${contact.phone.replace(/[^\d+]/g, '')}`}>{contact.phone}</a>
-          )}
-        </span>
       </div>
       {may ? (
         <span className="clients-setup-buttons">
@@ -384,6 +392,18 @@ function ContactRow({
           </button>
         </span>
       ) : null}
+      <small className="clients-contact-ways">
+        {contact.email === null ? (
+          <Missing what="email" />
+        ) : (
+          <a href={`mailto:${contact.email}`}>{contact.email}</a>
+        )}
+        {contact.phone === null ? (
+          <Missing what="phone" />
+        ) : (
+          <a href={`tel:${contact.phone.replace(/[^\d+]/g, '')}`}>{contact.phone}</a>
+        )}
+      </small>
       {problem === undefined ? null : <Notice problem={problem} />}
     </li>
   );

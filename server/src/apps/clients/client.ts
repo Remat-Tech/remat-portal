@@ -9,6 +9,7 @@
 
 import type { CalendarDate } from '../../core/calendar/time.js';
 import type { Contact } from './contact.js';
+import type { Opportunity } from './opportunity.js';
 import { isAnId } from './product.js';
 import type { ProductInUse } from './product-in-use.js';
 
@@ -44,6 +45,8 @@ export interface Client {
   contacts: Contact[];
   /** The products it uses or has used, by name, those it stopped using marked with the day. */
   products: ProductInUse[];
+  /** Its deals, open first and then ended, each newest first (CLI 55, CLI 99). #277. */
+  opportunities: Opportunity[];
 }
 
 /** A client as the clients list shows it. */
@@ -58,7 +61,7 @@ export interface ClientPermissions {
   change: boolean;
   /** Moving it to somebody else. A BD manager's. */
   reassign: boolean;
-  /** Adding and correcting contacts and products. Anybody with a role's. */
+  /** Adding and correcting contacts and products, and opening a deal. Anybody with a role's. */
   contribute: boolean;
 }
 

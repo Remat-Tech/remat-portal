@@ -13,6 +13,8 @@ import { ClientService } from '../../src/apps/clients/client.service.js';
 import { ClientsContactRepository } from '../../src/apps/clients/contact.db.js';
 import { ClientsProductInUseRepository } from '../../src/apps/clients/product-in-use.db.js';
 import { clientsDoor } from '../../src/apps/clients/door.js';
+import { ClientsOpportunityRepository } from '../../src/apps/clients/opportunity.db.js';
+import { OpportunityService } from '../../src/apps/clients/opportunity.service.js';
 import { ClientsProductRepository } from '../../src/apps/clients/product.db.js';
 import { ClientsRoleRepository } from '../../src/apps/clients/role.db.js';
 import { RoleService } from '../../src/apps/clients/role.service.js';
@@ -66,23 +68,29 @@ export async function startClientsApp(
 
   const guard = new Guard(denials);
   const grants = new ClientsRoleRepository(db);
+  const clientRecords = new ClientsClientRepository(db);
+  const productsInUse = new ClientsProductInUseRepository(db);
+  const opportunities = new ClientsOpportunityRepository(db);
 
   const router = clientsRoutes({
     door: clientsDoor(guard, grants),
     grants,
     roles: new RoleService(guard, grants, new EmployeeRepository(db)),
-    setup: new SetupService(
-      guard,
-      grants,
-      new ClientsProductRepository(db),
-      new ClientsClientRepository(db),
-    ),
+    setup: new SetupService(guard, grants, new ClientsProductRepository(db), clientRecords),
     clients: new ClientService(
       guard,
       grants,
-      new ClientsClientRepository(db),
+      clientRecords,
       new ClientsContactRepository(db),
-      new ClientsProductInUseRepository(db),
+      productsInUse,
+      opportunities,
+    ),
+    opportunities: new OpportunityService(
+      guard,
+      grants,
+      clientRecords,
+      productsInUse,
+      opportunities,
     ),
   });
 
