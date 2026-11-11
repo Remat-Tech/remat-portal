@@ -43,6 +43,8 @@ export const AUDITED_ENTITIES = [
   'clients_client',
   'clients_contact',
   'clients_client_product',
+  /** #277. A deal: who owns it, what it is worth and how likely it is. */
+  'clients_opportunity',
 ] as const;
 
 export type AuditedEntity = (typeof AUDITED_ENTITIES)[number];
@@ -72,6 +74,7 @@ export const AUDITED_ENTITY_LABELS: Readonly<Record<AuditedEntity, string>> = {
   clients_client: 'Client',
   clients_contact: 'Client contact',
   clients_client_product: 'Product a client uses',
+  clients_opportunity: 'Deal',
 };
 
 /**

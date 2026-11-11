@@ -112,6 +112,9 @@ describe('the entities an entry can be about', () => {
       'clients_contact',
       /* #276. What a client uses decides what is sold to them next. */
       'clients_client_product',
+      /* #277. Who owns a deal, and what it was said to be worth and when, is what a pipeline
+         review argues about. */
+      'clients_opportunity',
     ]);
   });
 });

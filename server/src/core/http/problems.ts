@@ -482,6 +482,10 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   ContactRemoved: 409,
   /** #276. Correcting the dates on the one already there is the fix. */
   ProductAlreadyInUse: 409,
+  /** #277, CLI 11. TDD 11's ALREADY_OPEN: the open deal is the one to work on. */
+  OpportunityAlreadyOpen: 409,
+  /** #277, CLI 55, CLI 56. An ended deal is kept as it ended; a new deal is the fix. */
+  OpportunityEnded: 409,
 };
 
 /**

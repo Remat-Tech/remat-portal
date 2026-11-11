@@ -83,6 +83,8 @@ import type { ClientsClientRepository } from './apps/clients/client.db.js';
 import { ClientService } from './apps/clients/client.service.js';
 import type { ClientsContactRepository } from './apps/clients/contact.db.js';
 import type { ClientsProductInUseRepository } from './apps/clients/product-in-use.db.js';
+import type { ClientsOpportunityRepository } from './apps/clients/opportunity.db.js';
+import { OpportunityService } from './apps/clients/opportunity.service.js';
 import type { ClientsProductRepository } from './apps/clients/product.db.js';
 import { SetupService } from './apps/clients/setup.service.js';
 import { RoleService } from './apps/clients/role.service.js';
@@ -226,6 +228,8 @@ export interface Application {
   clientsContacts?: ClientsContactRepository;
   /** #276. The products they use, which go with them too. */
   clientsProductsInUse?: ClientsProductInUseRepository;
+  /** #277. Their deals, which go with them as well. */
+  clientsOpportunities?: ClientsOpportunityRepository;
   /** Where a 500 is written down. */
   failures?: FailureLog;
   /** Read from `SESSION_SECRET` when not given. */
@@ -556,6 +560,20 @@ export function buildApp(parts: Application): Express {
   const clientsRoles = process.env.NODE_ENV === 'production' ? undefined : parts.clientsRoles;
 
   if (clientsRoles !== undefined) {
+    /* A client's page lists its deals, so there are client routes only with both. */
+    const clientParts =
+      parts.clientsClients === undefined ||
+      parts.clientsContacts === undefined ||
+      parts.clientsProductsInUse === undefined ||
+      parts.clientsOpportunities === undefined
+        ? undefined
+        : {
+            clients: parts.clientsClients,
+            contacts: parts.clientsContacts,
+            productsInUse: parts.clientsProductsInUse,
+            opportunities: parts.clientsOpportunities,
+          };
+
     app.use(
       '/api',
       clientsRoutes({
@@ -572,16 +590,25 @@ export function buildApp(parts: Application): Express {
                 parts.clientsClients,
               ),
         clients:
-          parts.clientsClients === undefined ||
-          parts.clientsContacts === undefined ||
-          parts.clientsProductsInUse === undefined
+          clientParts === undefined
             ? undefined
             : new ClientService(
                 parts.guard,
                 clientsRoles,
-                parts.clientsClients,
-                parts.clientsContacts,
-                parts.clientsProductsInUse,
+                clientParts.clients,
+                clientParts.contacts,
+                clientParts.productsInUse,
+                clientParts.opportunities,
+              ),
+        opportunities:
+          clientParts === undefined
+            ? undefined
+            : new OpportunityService(
+                parts.guard,
+                clientsRoles,
+                clientParts.clients,
+                clientParts.productsInUse,
+                clientParts.opportunities,
               ),
       }),
     );

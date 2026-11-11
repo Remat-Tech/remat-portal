@@ -51,10 +51,12 @@ export class ClientsClientRepository {
   }
 
   /**
-   * One client, with its type's and owner's names. Its contacts and products are other
+   * One client, with its type's and owner's names. Its contacts, products and deals are other
    * repositories'.
    */
-  async find(id: string): Promise<Omit<Client, 'contacts' | 'products'> | undefined> {
+  async find(
+    id: string,
+  ): Promise<Omit<Client, 'contacts' | 'products' | 'opportunities'> | undefined> {
     const row = await this.db
       .selectFrom('clients_client as c')
       .innerJoin('clients_client_type as t', 't.id', 'c.type_id')

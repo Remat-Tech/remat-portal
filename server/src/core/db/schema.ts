@@ -766,8 +766,56 @@ export interface ClientsClientProductTable {
   won_by: ColumnType<string | null, string | null | undefined, never>;
 }
 
+/**
+ * An opportunity, a deal: one client and one product. #277, Clients SRS CLI 12, TDD 4.2. Which
+ * client it is for never changes, and none is deleted. Its value is minor units of one currency,
+ * and its expected close a half and a year; each pair is both null while unknown.
+ */
+export interface ClientsOpportunityTable {
+  id: Generated<string>;
+  client_id: ColumnType<string, string, never>;
+  product_id: string;
+  owner_id: string;
+  /** Every deal starts open; only the stage service (#278) moves it on. */
+  outcome: ColumnType<string, never, never>;
+  /** BIGINT, which pg hands back as a string. */
+  value_minor: Nullable<string, string | number>;
+  currency: Nullable<string>;
+  probability: Nullable<number>;
+  close_half: Nullable<string>;
+  close_year: Nullable<number>;
+  waiting_on: Nullable<string>;
+  waiting_note: Nullable<string>;
+  stated_interest: Nullable<string>;
+  created_at: ColumnType<Date, never, never>;
+}
+
+/**
+ * What a deal's value and probability were after one change to either. #277, TDD 4.2. Written
+ * once, never changed or deleted (NFR CLI REC 01).
+ */
+export interface ClientsValueChangeTable {
+  id: Generated<string>;
+  opportunity_id: ColumnType<string, string, never>;
+  /** BIGINT, which pg hands back as a string. */
+  value_minor: ColumnType<string | null, string | number | null, never>;
+  currency: ColumnType<string | null, string | null, never>;
+  probability: ColumnType<number | null, number | null, never>;
+  source: ColumnType<string, string, never>;
+  activity_id: ColumnType<string | null, string | null | undefined, never>;
+  changed_by: ColumnType<string, string, never>;
+  changed_at: ColumnType<Date, never, never>;
+}
+
+/** A column that may be null, and is left null when an insert leaves it out. */
+type Nullable<Read, Write = Read> = ColumnType<Read | null, Write | null | undefined, Write | null>;
+
 export interface Database {
   app_user: AppUserTable;
+  /** #277. */
+  clients_opportunity: ClientsOpportunityTable;
+  /** #277. */
+  clients_value_change: ClientsValueChangeTable;
   /** #276. */
   clients_client_product: ClientsClientProductTable;
   /** #276. */

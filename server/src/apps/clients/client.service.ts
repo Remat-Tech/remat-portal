@@ -1,5 +1,6 @@
 /**
- * Clients, their contacts and the products they use. #276, Clients SRS CLI 02 to CLI 05.
+ * Clients, their contacts and the products they use. #276, Clients SRS CLI 02 to CLI 05. A
+ * client's page lists its deals too (#277), which are opened through OpportunityService.
  *
  * Every method asks `clientsPolicy` first, before reading the request or looking anything up, so
  * somebody refused learns nothing from what they sent.
@@ -29,6 +30,9 @@ import {
   readNewContact,
 } from './contact.js';
 import type { ClientsContactRepository } from './contact.db.js';
+import type { DealView } from './opportunity.js';
+import type { ClientsOpportunityRepository } from './opportunity.db.js';
+import { viewOf } from './opportunity.service.js';
 import { clientsPolicy } from './policy.js';
 import { isAnId } from './product.js';
 import {
@@ -50,6 +54,8 @@ export class ClientService {
     private readonly clients: ClientsClientRepository,
     private readonly contacts: ClientsContactRepository,
     private readonly productsInUse: ClientsProductInUseRepository,
+    /** #277. A client's deals, which its page lists. */
+    private readonly opportunities: Pick<ClientsOpportunityRepository, 'of'>,
   ) {}
 
   /** Every client type, retired ones included and marked, for the form to offer. */
@@ -135,14 +141,21 @@ export class ClientService {
    * One client, by id, with its contacts and products, and what the person asking may do to it:
    * the policy's answers, for the screen to offer only those.
    */
-  async page(actor: Actor, id: string): Promise<{ client: Client; may: ClientPermissions }> {
+  async page(
+    actor: Actor,
+    id: string,
+  ): Promise<{ client: Client & { opportunities: DealView[] }; may: ClientPermissions }> {
     const access = await this.accessOf(actor);
     this.guard.enforce(clientsPolicy.read(actor, access, id));
 
     const client = await this.clientOrRefuse(id);
 
     return {
-      client,
+      client: {
+        ...client,
+        /* Each with what the person reading may do to it, for the page to offer. #277. */
+        opportunities: client.opportunities.map((deal) => viewOf(actor, access, deal)),
+      },
       may: {
         change: clientsPolicy.changeClient(actor, access, client).allowed,
         reassign: clientsPolicy.reassign(actor, access, 'client', id).allowed,
@@ -324,11 +337,12 @@ export class ClientService {
       throw new ClientNotFound();
     }
 
-    const [contacts, products] = await Promise.all([
+    const [contacts, products, opportunities] = await Promise.all([
       this.contacts.of(id),
       this.productsInUse.of(id),
+      this.opportunities.of(id),
     ]);
 
-    return { ...client, contacts, products };
+    return { ...client, contacts, products, opportunities };
   }
 }

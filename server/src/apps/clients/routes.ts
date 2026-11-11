@@ -21,6 +21,8 @@ import { accessOf, viewsOf } from './access.js';
 import type { Client } from './client.js';
 import type { ClientService } from './client.service.js';
 import type { Contact } from './contact.js';
+import type { Opportunity } from './opportunity.js';
+import type { OpportunityService } from './opportunity.service.js';
 import type { Grant } from './role.js';
 import type { ClientsRoleRepository } from './role.db.js';
 import type { RoleService, RolesScreen } from './role.service.js';
@@ -40,9 +42,18 @@ export interface ClientsRoutes {
   setup?: SetupService;
   /** Clients themselves. Optional, for the same reason. */
   clients?: ClientService;
+  /** Deals. #277. Optional, for the same reason. */
+  opportunities?: OpportunityService;
 }
 
-export function clientsRoutes({ door, grants, roles, setup, clients }: ClientsRoutes): Router {
+export function clientsRoutes({
+  door,
+  grants,
+  roles,
+  setup,
+  clients,
+  opportunities,
+}: ClientsRoutes): Router {
   const routes = Router();
 
   /* First, before any route below: somebody with no clients role is turned away here, from
@@ -66,6 +77,10 @@ export function clientsRoutes({ door, grants, roles, setup, clients }: ClientsRo
 
   if (clients !== undefined) {
     clientRoutes(routes, clients);
+  }
+
+  if (opportunities !== undefined) {
+    opportunityRoutes(routes, opportunities);
   }
 
   /** Who holds which role, and who could be granted one. */
@@ -309,6 +324,55 @@ function clientRoutes(routes: Router, clients: ClientService): void {
   );
 }
 
+/**
+ * Deals, under `/clients/opportunities`. #277, Clients SRS CLI 10 to CLI 17, TDD 11. Anybody with a
+ * clients role reads and opens them; somebody with none never gets past the door.
+ */
+function opportunityRoutes(routes: Router, opportunities: OpportunityService): void {
+  /**
+   * `{ clientId, productId, value?: { amount, currency }, probability?, expectedClose?: { half,
+   * year }, waitingOn?: { on, note? }, statedInterest? }`. The owner is whoever asks.
+   */
+  routes.post(
+    '/clients/opportunities',
+    answer(
+      async (request, response) =>
+        opportunityAsJson(await opportunities.create(actorOf(response), request.body)),
+      201,
+    ),
+  );
+
+  routes.get(
+    '/clients/opportunities/:id',
+    answer(async (request, response) =>
+      opportunityAsJson(await opportunities.find(actorOf(response), idOf(request))),
+    ),
+  );
+
+  /** Its past values: value and probability after each change, newest first. */
+  routes.get(
+    '/clients/opportunities/:id/history',
+    answer(async (request, response) => ({
+      history: (await opportunities.history(actorOf(response), idOf(request))).map((change) => ({
+        ...change,
+        changedAt: change.changedAt.toISOString(),
+      })),
+    })),
+  );
+
+  /**
+   * `{ value?, probability?, expectedClose?, waitingOn?, statedInterest? }`, each as opening a
+   * deal takes it: only what is present changes, and null takes it away. Its owner's or a BD
+   * manager's, while it is open (CLI 13).
+   */
+  routes.patch(
+    '/clients/opportunities/:id',
+    answer(async (request, response) =>
+      opportunityAsJson(await opportunities.change(actorOf(response), idOf(request), request.body)),
+    ),
+  );
+}
+
 /** Answers with the result, or with nothing where there is nothing to say. */
 function answer(work: (request: Request, response: Response) => Promise<unknown>, status = 200) {
   return (request: Request, response: Response, next: NextFunction) => {
@@ -334,7 +398,13 @@ function clientAsJson(client: Client): unknown {
     ...client,
     createdAt: client.createdAt.toISOString(),
     contacts: client.contacts.map(contactAsJson),
+    opportunities: client.opportunities.map(opportunityAsJson),
   };
+}
+
+/** Every field present, a missing one as null, so the screen shows it as missing (CLI 06). */
+function opportunityAsJson(opportunity: Opportunity): unknown {
+  return { ...opportunity, createdAt: opportunity.createdAt.toISOString() };
 }
 
 function contactAsJson(contact: Contact): unknown {

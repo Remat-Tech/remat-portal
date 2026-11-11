@@ -3314,7 +3314,90 @@ export interface ClientPage extends ClientSummary {
   contacts: ClientContact[];
   /** By product name, ones it stopped using included. */
   products: ClientProductInUse[];
+  /** Open first, then ended, each newest first. #277. */
+  opportunities: Deal[];
   may: ClientPermissions;
+}
+
+/* ---------------------------------------------------------------- deals, #277 */
+
+/** Ghana cedis or US dollars, chosen per deal. Never added together. */
+export type Currency = 'GHS' | 'USD';
+
+/** An amount in pesewas or cents, always with its currency. */
+export interface Money {
+  amountMinor: number;
+  currency: Currency;
+}
+
+/** What is holding a deal up today, whatever its stage. SRS CLI 16. */
+export type WaitingOnWhat =
+  'DEMO' | 'PROPOSAL_RESPONSE' | 'PAPERWORK' | 'SIGNATURE' | 'CLIENT_DECISION' | 'OTHER';
+
+/** A deal: one client and one product. Null fields are missing, shown as such (CLI 06). */
+export interface Deal {
+  id: string;
+  client: { id: string; name: string };
+  product: { id: string; name: string; lineName: string };
+  owner: ClientsNamed;
+  outcome: 'OPEN' | 'WON' | 'LOST' | 'EXITED';
+  value: Money | null;
+  /** A whole percentage. */
+  probability: number | null;
+  expectedClose: { half: 'H1' | 'H2'; year: number } | null;
+  waitingOn: { on: WaitingOnWhat; note: string | null } | null;
+  statedInterest: string | null;
+  createdAt: string;
+  /** What the person reading may do. The server's answer; it refuses the rest. */
+  may: {
+    /** Its figures and words: its owner's or a BD manager's, while it is open. */
+    change: boolean;
+  };
+}
+
+/** A new deal, as the form sends it. The owner is whoever sends it. */
+export interface NewDeal {
+  clientId: string;
+  productId: string;
+  /** The amount as typed, "12500.50", so that nothing is rounded on the way. */
+  value: { amount: string; currency: Currency } | null;
+  probability: number | null;
+  /** As chosen. Half of the pair is sent as it is, for the server to say what is missing. */
+  expectedClose: { half: '' | 'H1' | 'H2'; year: number | null } | null;
+  waitingOn: { on: WaitingOnWhat; note: string } | null;
+  statedInterest: string;
+}
+
+/** Opens a deal, owned by whoever asks. Refused if the client has one open for the product. */
+export async function openDeal(deal: NewDeal): Promise<Deal> {
+  return request<Deal>('POST', '/api/clients/opportunities', deal);
+}
+
+/** A deal's value and probability as they stood after one change to either. */
+export interface DealValueChange {
+  value: Money | null;
+  probability: number | null;
+  /** By hand, a proposal, a POC converting, or the workbook import. */
+  source: 'MANUAL' | 'PROPOSAL' | 'CONVERSION' | 'IMPORT';
+  changedBy: ClientsNamed;
+  changedAt: string;
+}
+
+/** A deal's past values, newest first. The oldest is what it was opened with. */
+export async function dealHistory(id: string): Promise<DealValueChange[]> {
+  const { history } = await request<{ history: DealValueChange[] }>(
+    'GET',
+    `/api/clients/opportunities/${encodeURIComponent(id)}/history`,
+  );
+  return history;
+}
+
+/** What an edit sends: everything about a deal but its client and product. */
+export type DealChange = Omit<NewDeal, 'clientId' | 'productId'>;
+
+/** Edits a deal. Its owner's or a BD manager's, while it is open. */
+export async function changeDeal(id: string, change: DealChange): Promise<Deal> {
+  return request<Deal>('PATCH', `/api/clients/opportunities/${encodeURIComponent(id)}`, change);
 }
 
 /** A product that may be added to a client. */
