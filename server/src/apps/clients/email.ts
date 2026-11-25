@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import { type CalendarDate, formatDay } from '../../core/calendar/time.js';
 import { BRAND_NAME, oneLine, renderEmail } from '../../core/notification/layout.js';
 import type { NewOutboxEmail } from '../../core/notification/outbox.js';
+import type { MeetingReport, ReportTally } from './meeting-report.js';
 import type { Poc, PocFlag } from './poc.js';
 import { flagsIn, type PocAlert, toldKeyOf } from './poc-alerts.js';
 import type { OwnersSteps, StepToRemind } from './reminders.js';
@@ -29,6 +30,8 @@ export interface ClientsLinks {
   pocs(): string;
   /** One POC's page. */
   poc(id: string): string;
+  /** One meeting report's page. #291. */
+  report(id: string): string;
 }
 
 /** Links into Clients at this address. */
@@ -39,6 +42,7 @@ export function clientsLinks(appUrl: string): ClientsLinks {
     myPipeline: () => `${base}/#/clients`,
     pocs: () => `${base}/#/clients/pocs`,
     poc: (id) => `${base}/#/clients/poc/${encodeURIComponent(id)}`,
+    report: (id) => `${base}/#/clients/report/${encodeURIComponent(id)}`,
   };
 }
 
@@ -156,6 +160,58 @@ export function pocAlertsEmail(facts: {
     html,
     dedupeKey: `${POC_ALERTS_EMAIL}:${recipient.id}:${day}:${fingerprintOf(alerts)}`,
   };
+}
+
+/** A shared meeting report's email's name in the outbox. #291. */
+export const REPORT_SHARED_EMAIL = 'CLIENTS_REPORT_SHARED';
+
+/**
+ * A meeting report shared, to a BD manager, who may now read it (#291; every BD manager, the
+ * user, 25 November 2026). Its counts, and a link. Once per report and BD manager, which its
+ * dedupe key holds.
+ */
+export function reportSharedEmail(facts: {
+  bdManager: Recipient;
+  report: MeetingReport;
+  tally: ReportTally;
+  links: ClientsLinks;
+}): NewOutboxEmail {
+  const { bdManager, report, tally, links } = facts;
+  const days = periodInWords(report.period.from, report.period.to);
+
+  const { text, html } = renderEmail({
+    preview: `${report.author.name}, ${days}`,
+    greeting: `Hello ${bdManager.firstName},`,
+    paragraphs: [`${report.author.name} has shared their meeting report for ${days}.`],
+    facts: [
+      { label: 'Activities', value: String(tally.activitiesTotal) },
+      { label: 'Stage changes', value: String(tally.stageMoves) },
+      { label: 'Steps done', value: String(tally.stepsDone) },
+      { label: 'Steps overdue', value: String(tally.stepsOverdue) },
+      { label: 'POCs', value: String(tally.pocsTotal) },
+    ],
+    action: { label: 'Open the report', href: links.report(report.id) },
+    signOff: BRAND_NAME,
+    footer: ['You get this because you are a BD manager in Clients.'],
+  });
+
+  return {
+    kind: REPORT_SHARED_EMAIL,
+    recipientEmployeeId: bdManager.id,
+    to: bdManager.workEmail,
+    fromName: `${report.author.name} via ${BRAND_NAME}`,
+    replyTo: null,
+    senderEmployeeId: report.author.id,
+    subject: oneLine(`Meeting report from ${report.author.name}: ${days}`),
+    text,
+    html,
+    dedupeKey: `${REPORT_SHARED_EMAIL}:${report.id}:${bdManager.id}`,
+  };
+}
+
+/** "1 Nov 2026 to 14 Nov 2026", or the one day. */
+function periodInWords(from: CalendarDate, to: CalendarDate): string {
+  return from === to ? formatDay(from) : `${formatDay(from)} to ${formatDay(to)}`;
 }
 
 /** Twelve hex characters standing for exactly these flags, whatever order they came in. */

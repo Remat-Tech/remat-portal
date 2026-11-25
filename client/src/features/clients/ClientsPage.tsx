@@ -7,6 +7,7 @@ import { CompanyPipeline } from './CompanyPipeline';
 import { Dashboard } from './Dashboard';
 import { NewClientDialog } from './NewClient';
 import { LogActivityPage } from './LogActivity';
+import { MeetingReportPage } from './MeetingReportPage';
 import { MyPipeline } from './MyPipeline';
 import { PocsList, PocView } from './PocsView';
 import { ProposalsView } from './ProposalsView';
@@ -25,7 +26,8 @@ import { useAddress } from './ui';
  * `#/clients/company`, and the dashboard at `#/clients/dashboard` (#289); setup, a BD manager's, at `#/clients/setup`; roles, a System
  * Administrator's, at `#/clients/roles`; past proposals, anybody's with a role, at
  * `#/clients/proposals` (#281); and the POCs running at `#/clients/pocs`, one at
- * `#/clients/poc/{id}` (#285). Which tabs are drawn is the server's answer, from
+ * `#/clients/poc/{id}` (#285); and a meeting report at `#/clients/report/{id}`, from My pipeline
+ * (#291). Which tabs are drawn is the server's answer, from
  * `/api/clients/me`: the page asks rather than decides, and every route refuses whoever it
  * refuses whatever is drawn.
  */
@@ -74,13 +76,15 @@ export function ClientsPage({ onSignedOut }: { onSignedOut: () => void }) {
     (view.name === 'log' && reads) ||
     (view.name === 'company' && reads) ||
     (view.name === 'dashboard' && reads) ||
+    (view.name === 'report' && reads) ||
     view.name === 'client' ||
     view.name === 'poc'
       ? view.name
       : 'pipeline';
 
   /* One client's page, a POC's and the logging page have their own way back, and need the room. */
-  const onItsOwn = showing === 'client' || showing === 'poc' || showing === 'log';
+  const onItsOwn =
+    showing === 'client' || showing === 'poc' || showing === 'log' || showing === 'report';
 
   return (
     <div className="portal">
@@ -192,6 +196,8 @@ export function ClientsPage({ onSignedOut }: { onSignedOut: () => void }) {
           <PocsList onSignedOut={onSignedOut} />
         ) : showing === 'poc' && view.id !== undefined ? (
           <PocView key={view.id} id={view.id} onSignedOut={onSignedOut} />
+        ) : showing === 'report' && view.id !== undefined ? (
+          <MeetingReportPage key={view.id} id={view.id} onSignedOut={onSignedOut} />
         ) : showing === 'log' ? (
           <LogActivityPage
             key={`${view.id ?? ''}-${view.dealId ?? ''}`}
@@ -220,7 +226,9 @@ type ClientsView =
   | 'roles'
   | 'proposals'
   | 'pocs'
-  | 'poc';
+  | 'poc'
+  /* #291. A meeting report. */
+  | 'report';
 
 /**
  * Which view the address names, and the client, POC or deal for one. Logging is at `clients/log`
@@ -246,6 +254,11 @@ function viewOf(path: string): { name: ClientsView; id?: string; dealId?: string
 
   if (poc !== null) {
     return { name: 'poc', id: poc[1] };
+  }
+  const report = /^clients\/report\/(\d{1,18})$/.exec(path);
+
+  if (report !== null) {
+    return { name: 'report', id: report[1] };
   }
   if (path === 'clients/company') {
     return { name: 'company' };

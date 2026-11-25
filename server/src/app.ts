@@ -85,6 +85,10 @@ import { DashboardService } from './apps/clients/dashboard.service.js';
 import { ClientsStandings } from './apps/clients/standing.js';
 import type { ClientsReassignRepository } from './apps/clients/reassign.db.js';
 import { ReassignService } from './apps/clients/reassign.service.js';
+import type { ClientsMeetingReportRepository } from './apps/clients/meeting-report.db.js';
+import { MeetingReportService } from './apps/clients/meeting-report.service.js';
+import type { ClientsReportContentsRepository } from './apps/clients/meeting-report-contents.db.js';
+import type { ClientsLinks } from './apps/clients/email.js';
 import type { ClientsContactRepository } from './apps/clients/contact.db.js';
 import type { ClientsProductInUseRepository } from './apps/clients/product-in-use.db.js';
 import type { ClientsOpportunityRepository } from './apps/clients/opportunity.db.js';
@@ -260,6 +264,12 @@ export interface Application {
   clientsPocs?: ClientsPocRepository;
   /** #289. Moving deals, and everything of one person's, to somebody else. */
   clientsReassign?: ClientsReassignRepository;
+  /** #291. Meeting reports. */
+  clientsMeetingReports?: ClientsMeetingReportRepository;
+  /** #291. What a meeting report is built from. */
+  clientsReportContents?: ClientsReportContentsRepository;
+  /** #291. Telling BD managers a report is shared: where to link, and nudging the outbox. */
+  clientsReportMail?: { links: ClientsLinks; nudge: () => void };
   /** #284. Deals' and POCs' checks and their ticks. */
   clientsChecks?: ClientsCheckRepository;
   /** #284. The checklists themselves, which setup keeps: no setup routes without them. */
@@ -703,6 +713,18 @@ export function buildApp(parts: Application): Express {
                 clientParts.activities,
               ),
         pocs,
+        meetingReports:
+          parts.clientsMeetingReports === undefined ||
+          parts.clientsReportContents === undefined ||
+          parts.clientsReportMail === undefined
+            ? undefined
+            : new MeetingReportService(
+                parts.guard,
+                clientsRoles,
+                parts.clientsMeetingReports,
+                parts.clientsReportContents,
+                parts.clientsReportMail,
+              ),
         reassign:
           clientParts === undefined || parts.clientsReassign === undefined
             ? undefined

@@ -127,6 +127,8 @@ describe('the entities an entry can be about', () => {
       'clients_poc',
       /* #284. Changing a checklist changes what every deal and POC after it is judged by. */
       'clients_checklist_item',
+      /* #291. A meeting report: what was claimed for a period, and when it was shared. */
+      'clients_meeting_report',
     ]);
   });
 });

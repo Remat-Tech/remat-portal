@@ -10586,6 +10586,102 @@ button.linkish.file-name {
   font-size: 0.8125rem;
 }
 
+/* My reports, under My pipeline's deals. #291. */
+.clients-reports {
+  margin-top: 1.5rem;
+}
+
+.clients-reports-none {
+  margin: 0;
+  padding: 0 1.25rem 1.1rem;
+}
+
+/* A meeting report's page, #291: the counts, then a short list under each heading. */
+.clients-report-asof {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--gap);
+  margin: 0 0 var(--gap);
+  font-size: 0.875rem;
+}
+
+.clients-report-sections {
+  display: grid;
+  gap: var(--gap);
+}
+
+.clients-report-section .clients-panel-head h3 .muted {
+  margin-left: 0.35rem;
+  font-weight: 400;
+}
+
+.clients-report-lines {
+  margin: 0;
+  padding: 0 1.25rem 1rem;
+  list-style: none;
+}
+
+.clients-report-lines li {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  gap: var(--gap);
+  padding: 0.5rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.clients-report-lines li > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.clients-report-lines small {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--ink-soft);
+}
+
+.clients-report-when {
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+}
+
+.clients-report-when.is-overdue {
+  color: var(--warn);
+}
+
+@media (max-width: 40rem) {
+  .clients-report-lines li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.15rem;
+  }
+}
+
+/* A report's written sections, #291: a heading over each, "Nothing written" where empty. */
+.clients-report-written {
+  margin-top: var(--gap);
+}
+
+.clients-report-written-list {
+  margin: 0;
+  padding: 0 1.25rem 1rem;
+}
+
+.clients-report-written-list > div {
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.clients-report-written-list dt {
+  font-weight: 600;
+}
+
+.clients-report-written-list dd {
+  margin: 0.25rem 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* A stage as a small chip, as the mockup draws it. */
 .clients-stage-chip {
   display: inline-block;

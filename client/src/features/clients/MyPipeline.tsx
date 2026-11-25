@@ -4,6 +4,7 @@ import { money, weekday } from '../../format';
 import { Icon } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
 import { STAGE_NAME, WaitingOnCell } from './Deals';
+import { MeetingReports } from './MeetingReports';
 
 /**
  * My pipeline: the open deals I own, soonest next step first, so what is overdue is at the top and
@@ -15,6 +16,8 @@ import { STAGE_NAME, WaitingOnCell } from './Deals';
  * Filtering by a line includes every product in it (CLI 09). On a phone, or any panel too narrow
  * for seven columns, each row becomes a card of labelled lines, as the client page's deals do (NFR
  * CLI USA 02).
+ *
+ * Under the deals, my meeting reports (#291).
  */
 
 /** Longer than this since anybody spoke to the client, and it is shown in amber. */
@@ -173,6 +176,9 @@ export function MyPipeline({ onSignedOut }: { onSignedOut: () => void }) {
           </p>
         </>
       )}
+
+      {/* #291. What I bring to my meeting with a BD manager. */}
+      <MeetingReports onSignedOut={onSignedOut} />
     </section>
   );
 }

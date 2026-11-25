@@ -36,6 +36,43 @@ export class ClientsRoleRepository {
     return rows.map((row) => row.role as ClientsRole);
   }
 
+  /**
+   * When somebody's current grant began: the earliest of the grants they hold today, ignoring
+   * any that ended before. Undefined for somebody who holds none. #291, where a first meeting
+   * report starts.
+   */
+  async liveSince(employeeId: string): Promise<Date | undefined> {
+    const row = await this.db
+      .selectFrom('clients_role')
+      .select((eb) => eb.fn.min('granted_at').as('since'))
+      .where('employee_id', '=', employeeId)
+      .where('ended_at', 'is', null)
+      .executeTakeFirst();
+
+    return row?.since ?? undefined;
+  }
+
+  /**
+   * Everybody who holds a live BD manager grant, with where to email them. #291, to tell them a
+   * meeting report has been shared with them.
+   */
+  async liveBdManagers(): Promise<{ id: string; firstName: string; workEmail: string }[]> {
+    const rows = await this.db
+      .selectFrom('clients_role as r')
+      .innerJoin('employee as e', 'e.id', 'r.employee_id')
+      .select(['e.id', 'e.first_name', 'e.work_email'])
+      .where('r.role', '=', 'BD_MANAGER')
+      .where('r.ended_at', 'is', null)
+      .orderBy('e.id')
+      .execute();
+
+    return rows.map((row) => ({
+      id: row.id,
+      firstName: row.first_name,
+      workEmail: row.work_email,
+    }));
+  }
+
   /** Everybody who holds a live grant, once each. */
   async liveHolderIds(): Promise<string[]> {
     const rows = await this.db

@@ -106,7 +106,7 @@ export interface NoteSubject {
 export interface MeetingReportSubject {
   id: string;
   author: Named;
-  status: 'DRAFT' | 'SHARED';
+  status: 'DRAFT' | 'SHARED' | 'DISCARDED';
 }
 
 /**
@@ -125,7 +125,9 @@ export type Contribution =
   | 'addNextStep'
   | 'addDocument'
   /** #278. A note on a client, with a heading. */
-  | 'addNote';
+  | 'addNote'
+  /** #291. A meeting report of one's own, BD managers included (the user, 25 November 2026). */
+  | 'draftMeetingReport';
 
 /** What may be moved to another person, which is a BD manager's alone (CLI 92). */
 export type Reassignable = 'client' | 'deal' | 'poc';
@@ -454,6 +456,10 @@ export const clientsPolicy = {
   /**
    * Reading one meeting report: its author's, and a BD manager's once it is shared (CLI 82).
    * Somebody else's draft is no BD manager's to read until it is shared.
+   *
+   * Refused silently (#291, the user, 25 November 2026): to anybody else it is not there at all,
+   * the same "no meeting report matches that" as an id nobody has, and the query that finds it
+   * finds only what they may read. The refusal is still written down.
    */
   readMeetingReport(actor: Actor, access: ClientsAccess, report: MeetingReportSubject): Decision {
     if (!holdsARole(access)) {
@@ -462,12 +468,11 @@ export const clientsPolicy = {
 
     return isSelfNamed(actor, report.author) || (isBdManager(access) && report.status === 'SHARED')
       ? about.allow(actor, 'readMeetingReport', report.id)
-      : about.refuseOpenly(
+      : about.refuse(
           actor,
           'readMeetingReport',
           report.id,
           'not its author, and not a BD manager reading a shared report',
-          'A meeting report is read by whoever wrote it, and by a BD manager once it is shared.',
         );
   },
 

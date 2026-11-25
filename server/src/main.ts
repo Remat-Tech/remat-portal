@@ -25,6 +25,8 @@ import { ClientsReasonRepository } from './apps/clients/reason.db.js';
 import { ClientsActivityRepository } from './apps/clients/activity.db.js';
 import { ClientsPocRepository } from './apps/clients/poc.db.js';
 import { ClientsReassignRepository } from './apps/clients/reassign.db.js';
+import { ClientsMeetingReportRepository } from './apps/clients/meeting-report.db.js';
+import { ClientsReportContentsRepository } from './apps/clients/meeting-report-contents.db.js';
 import { ClientsCheckRepository } from './apps/clients/checklist.db.js';
 import { ClientsChecklistItemRepository } from './apps/clients/checklist-item.db.js';
 import { CompanyCalendar } from './core/calendar/company-calendar.js';
@@ -404,6 +406,19 @@ const app = buildApp({
   /** #285. */
   clientsPocs: new ClientsPocRepository(db),
   clientsReassign: new ClientsReassignRepository(db),
+  /** #291. */
+  clientsMeetingReports: new ClientsMeetingReportRepository(db),
+  clientsReportContents: new ClientsReportContentsRepository(db),
+  /* The shared-report emails go into the outbox's table with the report, in one transaction, so
+     the outbox is not there to nudge its sender itself. */
+  clientsReportMail: {
+    links: clientsLinks(appUrlFrom(process.env)),
+    nudge: () => {
+      setImmediate(() => {
+        void drainOutbox();
+      });
+    },
+  },
   /** #284. */
   clientsChecks: new ClientsCheckRepository(db),
   clientsChecklistItems: new ClientsChecklistItemRepository(db),
