@@ -43,6 +43,7 @@ const TABLES = [
   'clients_tick',
   'clients_notification_run',
   'clients_poc_alert',
+  'clients_meeting_report',
 ];
 
 /** A client nobody else in a test has, owned by `owner`. */
@@ -3452,6 +3453,167 @@ describe('a POC flag the morning alerts told', () => {
   });
 });
 
+/* ------------------------------------------------------------ meeting reports, #291 */
+
+describe('a meeting report', () => {
+  const DRAFT = `INSERT INTO clients_meeting_report (author_id, period_from, period_to, figures)
+                 VALUES ($1, $2, $3, '{}') RETURNING id`;
+  const SHARED = `INSERT INTO clients_meeting_report
+                    (author_id, period_from, period_to, status, shared_at, figures)
+                  VALUES ($1, $2, $3, $4, $5, '{}') RETURNING id`;
+
+  it('records its author and period, and starts a draft', async () => {
+    const { rows } = await admin.query(
+      `${DRAFT.replace('RETURNING id', '')}
+       RETURNING author_id, period_from::text, period_to::text, status, created_at, shared_at,
+                 figures, figures_at`,
+      [ama, '2026-11-01', '2026-11-14'],
+    );
+
+    expect(rows[0]).toMatchObject({
+      author_id: ama,
+      period_from: '2026-11-01',
+      period_to: '2026-11-14',
+      status: 'DRAFT',
+      shared_at: null,
+      figures: {},
+    });
+    expect(rows[0].created_at).toBeInstanceOf(Date);
+    expect(rows[0].figures_at).toBeInstanceOf(Date);
+  });
+
+  /* The user, 25 November 2026: its figures are saved with it. */
+  it('has its figures', async () => {
+    expect(
+      await refusedBy(
+        `INSERT INTO clients_meeting_report (author_id, period_from, period_to)
+         VALUES ($1, '2026-11-01', '2026-11-14')`,
+        [ama],
+      ),
+    ).toMatch(/figures/);
+  });
+
+  it('is by somebody who exists', async () => {
+    expect(await refusedBy(DRAFT, ['987654321', '2026-11-01', '2026-11-14'])).toBe(
+      'clients_meeting_report_author_id_fkey',
+    );
+  });
+
+  it('covers a period that runs forwards, a single day included', async () => {
+    expect(await refusedBy(DRAFT, [ama, '2026-11-15', '2026-11-14'])).toBe(
+      'clients_meeting_report_period_runs_forwards',
+    );
+    expect(await refusedBy(DRAFT, [ama, '2026-11-14', '2026-11-14'])).toBeNull();
+  });
+
+  it('is a draft or shared, and shared exactly when it says when', async () => {
+    const period = ['2026-11-01', '2026-11-14'];
+
+    expect(await refusedBy(SHARED, [ama, ...period, 'SENT', null])).toBe(
+      'clients_meeting_report_status_known',
+    );
+    expect(await refusedBy(SHARED, [ama, ...period, 'SHARED', null])).toBe(
+      'clients_meeting_report_shared_when',
+    );
+    expect(await refusedBy(SHARED, [ama, ...period, 'DRAFT', '2026-11-15T10:00:00Z'])).toBe(
+      'clients_meeting_report_shared_when',
+    );
+    expect(await refusedBy(SHARED, [ama, ...period, 'SHARED', '2026-11-15T10:00:00Z'])).toBeNull();
+  });
+
+  /* The user, 25 November 2026: one draft each at a time, and periods may overlap. */
+  it('is one draft at a time for each author, beside any number shared', async () => {
+    const period = ['2026-11-01', '2026-11-14'];
+
+    expect(await refusedBy(SHARED, [ama, ...period, 'SHARED', '2026-11-15T10:00:00Z'])).toBeNull();
+    expect(await refusedBy(SHARED, [ama, ...period, 'SHARED', '2026-11-16T10:00:00Z'])).toBeNull();
+    expect(await refusedBy(DRAFT, [ama, ...period])).toBeNull();
+    expect(await refusedBy(DRAFT, [ama, ...period])).toBe('uq_clients_meeting_report_one_draft');
+    expect(await refusedBy(DRAFT, [kofi, ...period])).toBeNull();
+  });
+
+  /* The user, 25 November 2026: a draft is discarded and kept, and frees its author. */
+  it('is discarded exactly when it says when, which frees its author to start another', async () => {
+    const period = ['2026-11-01', '2026-11-14'];
+
+    expect(await refusedBy(SHARED, [ama, ...period, 'DISCARDED', null])).toBe(
+      'clients_meeting_report_discarded_when',
+    );
+
+    const { rows } = await admin.query<{ id: string }>(DRAFT, [ama, ...period]);
+    expect(
+      await refusedBy(`UPDATE clients_meeting_report SET status = 'DISCARDED' WHERE id = $1`, [
+        rows[0].id,
+      ]),
+    ).toBe('clients_meeting_report_discarded_when');
+    await admin.query(
+      `UPDATE clients_meeting_report SET status = 'DISCARDED', discarded_at = now() WHERE id = $1`,
+      [rows[0].id],
+    );
+    expect(await refusedBy(DRAFT, [ama, ...period])).toBeNull();
+  });
+
+  /* The user, 25 November 2026: its written sections are a list, empty until written. */
+  it('has its written sections as a list, none to start with', async () => {
+    const { rows } = await admin.query<{ id: string; sections: unknown }>(
+      DRAFT.replace('RETURNING id', 'RETURNING id, sections'),
+      [ama, '2026-11-01', '2026-11-14'],
+    );
+    expect(rows[0].sections).toEqual([]);
+
+    expect(
+      await refusedBy(`UPDATE clients_meeting_report SET sections = '{}' WHERE id = $1`, [
+        rows[0].id,
+      ]),
+    ).toBe('clients_meeting_report_sections_a_list');
+  });
+
+  /* TDD 4.7: shared, or discarded, it never changes again, whoever asks. */
+  it('changes while a draft, and never once shared or discarded', async () => {
+    const period = ['2026-11-01', '2026-11-14'];
+    const draft = (await admin.query<{ id: string }>(DRAFT, [ama, ...period])).rows[0].id;
+    const CHANGE = `UPDATE clients_meeting_report SET period_from = '2026-11-02' WHERE id = $1`;
+
+    expect(await refusedBy(CHANGE, [draft])).toBeNull();
+
+    await admin.query(
+      `UPDATE clients_meeting_report SET status = 'SHARED', shared_at = now() WHERE id = $1`,
+      [draft],
+    );
+    const discarded = (await admin.query<{ id: string }>(DRAFT, [ama, ...period])).rows[0].id;
+    await admin.query(
+      `UPDATE clients_meeting_report SET status = 'DISCARDED', discarded_at = now() WHERE id = $1`,
+      [discarded],
+    );
+
+    for (const id of [draft, discarded]) {
+      expect(await refusedBy(CHANGE, [id])).toBe('clients_meeting_report_fixed_once_settled');
+      expect(
+        await refusedBy(
+          `UPDATE clients_meeting_report SET status = 'DRAFT', shared_at = NULL,
+                  discarded_at = NULL WHERE id = $1`,
+          [id],
+        ),
+      ).toBe('clients_meeting_report_fixed_once_settled');
+    }
+  });
+
+  it('is written to the audit log by the database, with who did it', async () => {
+    await admin.query(
+      `SELECT set_config('lms.audit.actor', 'employee 7', true),
+              set_config('lms.audit.actor_employee_id', $1, true)`,
+      [ama],
+    );
+    const { rows } = await admin.query<{ id: string }>(DRAFT, [ama, '2026-11-01', '2026-11-14']);
+
+    const log = await admin.query(
+      `SELECT action, entity_id FROM audit_log
+        WHERE entity = 'clients_meeting_report' ORDER BY id`,
+    );
+    expect(log.rows).toEqual([{ action: 'CREATE', entity_id: rows[0].id }]);
+  });
+});
+
 /* ---------------------------------------------------------- what lms_app may do */
 
 describe('the application role', () => {
@@ -3548,6 +3710,16 @@ describe('the application role', () => {
       { table_name: 'clients_document', column_name: 'scan_status' },
       { table_name: 'clients_document', column_name: 'scanned_at' },
       { table_name: 'clients_document', column_name: 'scanned_by' },
+      /* #291. A draft report's period, figures and sections, and its sharing or discarding; never
+         its author. */
+      { table_name: 'clients_meeting_report', column_name: 'discarded_at' },
+      { table_name: 'clients_meeting_report', column_name: 'figures' },
+      { table_name: 'clients_meeting_report', column_name: 'figures_at' },
+      { table_name: 'clients_meeting_report', column_name: 'period_from' },
+      { table_name: 'clients_meeting_report', column_name: 'period_to' },
+      { table_name: 'clients_meeting_report', column_name: 'sections' },
+      { table_name: 'clients_meeting_report', column_name: 'shared_at' },
+      { table_name: 'clients_meeting_report', column_name: 'status' },
       /* #280, CLI 64. A step closed, by whom and when; never what, when due or whose. */
       { table_name: 'clients_next_step', column_name: 'done_at' },
       { table_name: 'clients_next_step', column_name: 'done_by' },

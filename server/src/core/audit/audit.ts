@@ -57,6 +57,8 @@ export const AUDITED_ENTITIES = [
   'clients_poc',
   /** #284. The checklists, kept by a BD manager: which item was added, reworded or retired. */
   'clients_checklist_item',
+  /** #291. A meeting report drafted, and later changed and shared. */
+  'clients_meeting_report',
 ] as const;
 
 export type AuditedEntity = (typeof AUDITED_ENTITIES)[number];
@@ -93,6 +95,7 @@ export const AUDITED_ENTITY_LABELS: Readonly<Record<AuditedEntity, string>> = {
   clients_next_step: 'Next step',
   clients_poc: 'POC',
   clients_checklist_item: 'Checklist item',
+  clients_meeting_report: 'Meeting report',
 };
 
 /**

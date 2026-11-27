@@ -1014,6 +1014,26 @@ export interface ClientsNotificationRunTable {
 }
 
 /**
+ * A meeting report: what somebody brings to their meeting with a BD manager, for a period. #291.
+ * One draft each at a time.
+ */
+export interface ClientsMeetingReportTable {
+  id: Generated<string>;
+  author_id: ColumnType<string, string, never>;
+  period_from: ColumnType<string, string, string>;
+  period_to: ColumnType<string, string, string>;
+  /** { contents, tally }, written as JSON text and read back parsed. */
+  figures: ColumnType<unknown, string, string>;
+  figures_at: ColumnType<Date, never, Date>;
+  /** [{ key, heading, body }], written as JSON text and read back parsed. */
+  sections: ColumnType<unknown, string, string>;
+  status: ColumnType<'DRAFT' | 'SHARED' | 'DISCARDED', never, 'SHARED' | 'DISCARDED'>;
+  created_at: ColumnType<Date, never, never>;
+  shared_at: ColumnType<Date | null, never, Date>;
+  discarded_at: ColumnType<Date | null, never, Date>;
+}
+
+/**
  * A POC flag the morning alerts have told somebody about, once per POC, flag, the moment it was
  * flagged from and person. #290. Written by the system with the email; never changed or deleted.
  */
@@ -1107,6 +1127,8 @@ export interface Database {
   clients_notification_run: ClientsNotificationRunTable;
   /** #290. */
   clients_poc_alert: ClientsPocAlertTable;
+  /** #291. */
+  clients_meeting_report: ClientsMeetingReportTable;
   /** #284. */
   clients_checklist_item: ClientsChecklistItemTable;
   /** #284. */

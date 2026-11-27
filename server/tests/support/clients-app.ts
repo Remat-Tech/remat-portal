@@ -14,6 +14,10 @@ import { DashboardService } from '../../src/apps/clients/dashboard.service.js';
 import { ClientsStandings } from '../../src/apps/clients/standing.js';
 import { ClientsReassignRepository } from '../../src/apps/clients/reassign.db.js';
 import { ReassignService } from '../../src/apps/clients/reassign.service.js';
+import { ClientsMeetingReportRepository } from '../../src/apps/clients/meeting-report.db.js';
+import { MeetingReportService } from '../../src/apps/clients/meeting-report.service.js';
+import { ClientsReportContentsRepository } from '../../src/apps/clients/meeting-report-contents.db.js';
+import { clientsLinks } from '../../src/apps/clients/email.js';
 import { ClientsContactRepository } from '../../src/apps/clients/contact.db.js';
 import { ClientsProductInUseRepository } from '../../src/apps/clients/product-in-use.db.js';
 import { clientsDoor } from '../../src/apps/clients/door.js';
@@ -168,6 +172,13 @@ export async function startClientsApp(
       new SignatureScanner(),
     ),
     checklists: new ChecklistService(guard, grants, new ClientsCheckRepository(db)),
+    meetingReports: new MeetingReportService(
+      guard,
+      grants,
+      new ClientsMeetingReportRepository(db),
+      new ClientsReportContentsRepository(db),
+      { links: clientsLinks('http://portal.test'), nudge: () => undefined },
+    ),
   });
 
   app.use('/api', router);

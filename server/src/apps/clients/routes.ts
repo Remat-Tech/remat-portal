@@ -34,6 +34,7 @@ import {
   type UploadedDocument,
 } from './document.js';
 import type { DocumentService } from './document.service.js';
+import type { MeetingReportService } from './meeting-report.service.js';
 import type { LoggedActivity } from './logged-activity.js';
 import type { NextStep } from './next-step.js';
 import type { ClientNote } from './note.js';
@@ -76,6 +77,8 @@ export interface ClientsRoutes {
   dashboard?: DashboardService;
   /** A BD manager moving deals, or everything of one person's. #289. Optional, likewise. */
   reassign?: ReassignService;
+  /** Meeting reports. #291. Optional, for the same reason. */
+  meetingReports?: MeetingReportService;
 }
 
 export function clientsRoutes({
@@ -92,6 +95,7 @@ export function clientsRoutes({
   checklists,
   dashboard,
   reassign,
+  meetingReports,
 }: ClientsRoutes): Router {
   const routes = Router();
 
@@ -162,6 +166,10 @@ export function clientsRoutes({
     );
   }
 
+  if (meetingReports !== undefined) {
+    meetingReportRoutes(routes, meetingReports);
+  }
+
   if (dashboard !== undefined) {
     /**
      * The dashboard: the value recorded, each open stage, the clients gone quiet and the POCs by
@@ -207,6 +215,85 @@ export function clientsRoutes({
   );
 
   return routes;
+}
+
+/**
+ * Meeting reports, under `/clients/meeting-reports`. #291, Clients SRS CLI 79 to CLI 82. Each asks
+ * `clientsPolicy` through the service.
+ */
+function meetingReportRoutes(routes: Router, reports: MeetingReportService): void {
+  /** Their own reports, their draft if they have one, and the period a new one is offered. */
+  routes.get(
+    '/clients/meeting-reports',
+    answer(async (_request, response) => reports.mine(actorOf(response))),
+  );
+
+  /** `{ from?, to? }`: a new draft for that period, either day left out being the one offered. */
+  routes.post(
+    '/clients/meeting-reports',
+    answer((request, response) => reports.draft(actorOf(response), request.body), 201),
+  );
+
+  /** One report as a PDF, to whoever may open it, a draft marked as one. */
+  routes.get(
+    '/clients/meeting-reports/:id/pdf',
+    (request: Request, response: Response, next: NextFunction) => {
+      void reports
+        .pdf(actorOf(response), idOf(request))
+        .then(({ name, bytes }) => {
+          response
+            .status(200)
+            .type('application/pdf')
+            .setHeader('Content-Disposition', `attachment; filename="${name}"`)
+            .setHeader('Cache-Control', 'no-store')
+            .send(bytes);
+        })
+        .catch(next);
+    },
+  );
+
+  /** One report, with its figures as saved. */
+  routes.get(
+    '/clients/meeting-reports/:id',
+    answer(async (request, response) => reports.read(actorOf(response), idOf(request))),
+  );
+
+  /** `{ from?, to? }`: a draft's new period, with its figures saved afresh for it. */
+  routes.patch(
+    '/clients/meeting-reports/:id',
+    answer(async (request, response) =>
+      reports.change(actorOf(response), idOf(request), request.body),
+    ),
+  );
+
+  /** `{ sections: { [key]: text | null } }`: what its author writes in a draft's sections. */
+  routes.patch(
+    '/clients/meeting-reports/:id/sections',
+    answer(async (request, response) =>
+      reports.writeSections(actorOf(response), idOf(request), request.body),
+    ),
+  );
+
+  /** Throws a draft away, keeping it, which frees its author to start another. */
+  routes.post(
+    '/clients/meeting-reports/:id/discard',
+    answer(async (request, response) => reports.discard(actorOf(response), idOf(request))),
+  );
+
+  /**
+   * Shares a draft: its figures saved a last time and it fixed, for every BD manager to read, each
+   * emailed.
+   */
+  routes.post(
+    '/clients/meeting-reports/:id/share',
+    answer(async (request, response) => reports.share(actorOf(response), idOf(request))),
+  );
+
+  /** Saves a draft's figures afresh, as its author's work in its period stands now. */
+  routes.post(
+    '/clients/meeting-reports/:id/figures',
+    answer(async (request, response) => reports.updateFigures(actorOf(response), idOf(request))),
+  );
 }
 
 /**

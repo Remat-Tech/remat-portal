@@ -4536,3 +4536,217 @@ export async function copyChecklist(
     fromClientTypeId: from.clientTypeId,
   });
 }
+
+/* ------------------------------------------------------------- meeting reports, #291 */
+
+/** The days a meeting report covers, both included, as calendar dates. */
+export interface ReportPeriod {
+  from: string;
+  to: string;
+}
+
+/** A meeting report: what somebody brings to their meeting with a BD manager. */
+export interface MeetingReport {
+  id: string;
+  author: { id: string; name: string };
+  period: ReportPeriod;
+  /** A draft until shared, or discarded by its author. */
+  status: 'DRAFT' | 'SHARED' | 'DISCARDED';
+  createdAt: string;
+  sharedAt: string | null;
+  discardedAt: string | null;
+}
+
+/** My own reports, my draft if I have one, and the period a new one is offered. */
+export interface MyMeetingReports {
+  reports: MeetingReport[];
+  /** For a BD manager, everybody else's shared reports, newest first. Null for anybody else. */
+  shared: MeetingReport[] | null;
+  draftId: string | null;
+  nextPeriod: ReportPeriod;
+}
+
+/** A client's deal, as a report line names it. */
+export interface ReportDeal {
+  id: string;
+  product: string;
+}
+
+/** What a report holds for its period. #291. */
+export interface ReportContents {
+  /** Activities its author logged that happened in the period, oldest first. */
+  activities: {
+    id: string;
+    happenedOn: string;
+    kind: ActivityKind;
+    client: { id: string; name: string };
+    deal: ReportDeal | null;
+    withWhom: string | null;
+    outcome: string | null;
+  }[];
+  /** Stage changes made in the period on deals its author owns, whoever made them. */
+  stageMoves: {
+    id: string;
+    movedOn: string;
+    client: { id: string; name: string };
+    deal: ReportDeal;
+    /** Null on the change that opened the deal. */
+    from: DealStage | null;
+    to: DealStage;
+    outcome: 'OPEN' | 'WON' | 'LOST' | 'EXITED';
+    note: string | null;
+    by: { id: string; name: string };
+  }[];
+  /** Next steps its author closed in the period. */
+  stepsDone: ReportStep[];
+  /** Its author's next steps still open and past due at the period's end. */
+  stepsOverdue: ReportStep[];
+  /** POCs its author leads that ran during the period. */
+  pocs: {
+    id: string;
+    client: { id: string; name: string };
+    line: string;
+    startedOn: string;
+    decisionOn: string;
+    healthAtEnd: PocHealth;
+    changes: {
+      health: PocHealth;
+      setOn: string;
+      note: string | null;
+      by: { id: string; name: string };
+    }[];
+    ended: { outcome: 'OPEN' | 'WON' | 'LOST' | 'EXITED'; on: string } | null;
+  }[];
+}
+
+export interface ReportStep {
+  id: string;
+  description: string;
+  client: { id: string; name: string };
+  deal: ReportDeal | null;
+  dueOn: string;
+  /** The day it was closed, or null where it was still open at the period's end. */
+  doneOn: string | null;
+}
+
+/** The counts on top of a report. */
+export interface ReportTally {
+  activities: { kind: ActivityKind; count: number }[];
+  activitiesTotal: number;
+  stageMoves: number;
+  stepsDone: number;
+  stepsOverdue: number;
+  pocs: Record<PocHealth, number>;
+  pocsTotal: number;
+}
+
+/** A report with its figures as saved, when they were saved, and what I may do to it. */
+/** One written section of a report: a placeholder heading until the team confirms. */
+export interface ReportSection {
+  key: string;
+  heading: string;
+  /** Null where nothing is written. */
+  body: string | null;
+}
+
+export type MeetingReportView = MeetingReport & {
+  contents: ReportContents;
+  tally: ReportTally;
+  sections: ReportSection[];
+  figuresAt: string;
+  may: { change: boolean };
+};
+
+export async function meetingReport(id: string): Promise<MeetingReportView> {
+  return request<MeetingReportView>(
+    'GET',
+    `/api/clients/meeting-reports/${encodeURIComponent(id)}`,
+  );
+}
+
+export async function myMeetingReports(): Promise<MyMeetingReports> {
+  return request<MyMeetingReports>('GET', '/api/clients/meeting-reports');
+}
+
+/** A draft's new period, with its figures saved afresh for it. */
+export async function changeMeetingReport(
+  id: string,
+  period: ReportPeriod,
+): Promise<MeetingReportView> {
+  return request<MeetingReportView>(
+    'PATCH',
+    `/api/clients/meeting-reports/${encodeURIComponent(id)}`,
+    period,
+  );
+}
+
+/**
+ * Shares a draft: its figures saved a last time and it fixed, for every BD manager to read, each
+ * emailed.
+ */
+export async function shareMeetingReport(id: string): Promise<MeetingReportView> {
+  return request<MeetingReportView>(
+    'POST',
+    `/api/clients/meeting-reports/${encodeURIComponent(id)}/share`,
+  );
+}
+
+/**
+ * Saves a report as a PDF, named for its author and period. Anybody who may open it may, a draft
+ * included, which the PDF marks as one.
+ */
+export async function downloadMeetingReportPdf(id: string): Promise<void> {
+  const response = await send(`/api/clients/meeting-reports/${encodeURIComponent(id)}/pdf`, {
+    method: 'GET',
+    credentials: 'same-origin',
+  });
+
+  if (!response.ok) {
+    throw errorFrom(response.status, await response.json().catch(() => undefined));
+  }
+
+  const named = /filename="([^"]+)"/.exec(response.headers.get('content-disposition') ?? '');
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+
+  link.href = url;
+  link.download = named?.[1] ?? 'meeting-report.pdf';
+  link.click();
+
+  setTimeout(() => {
+    URL.revokeObjectURL(url);
+  }, 1000);
+}
+
+/** What I write in my draft's sections, by key; blank or null empties one, left out keeps it. */
+export async function writeMeetingReportSections(
+  id: string,
+  sections: Record<string, string | null>,
+): Promise<MeetingReportView> {
+  return request<MeetingReportView>(
+    'PATCH',
+    `/api/clients/meeting-reports/${encodeURIComponent(id)}/sections`,
+    { sections },
+  );
+}
+
+/** Throws a draft away. It is kept, out of my list, and I may start another. */
+export async function discardMeetingReport(id: string): Promise<MeetingReportView> {
+  return request<MeetingReportView>(
+    'POST',
+    `/api/clients/meeting-reports/${encodeURIComponent(id)}/discard`,
+  );
+}
+
+/** Saves a draft's figures afresh, as my work in its period stands now. */
+export async function updateMeetingReportFigures(id: string): Promise<MeetingReportView> {
+  return request<MeetingReportView>(
+    'POST',
+    `/api/clients/meeting-reports/${encodeURIComponent(id)}/figures`,
+  );
+}
+
+/** A new draft, for that period, with its figures as they stand now. One draft at a time. */
+export async function draftMeetingReport(period: ReportPeriod): Promise<MeetingReport> {
+  return request<MeetingReport>('POST', '/api/clients/meeting-reports', period);
+}

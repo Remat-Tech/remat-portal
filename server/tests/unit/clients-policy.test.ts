@@ -304,13 +304,14 @@ describe('meeting reports (CLI 79 to CLI 82)', () => {
   const draft: MeetingReportSubject = { id: '8', author: owner, status: 'DRAFT' };
   const shared: MeetingReportSubject = { ...draft, status: 'SHARED' };
 
+  /* #291: to anybody else it is not there, so silently (the user, 25 November 2026). */
   it('a draft is read by its author alone, not even a BD manager', () => {
     expect(
       answers((actor, access) => clientsPolicy.readMeetingReport(actor, access, draft)),
     ).toEqual({
       owner: 'allowed',
-      otherAssociate: 'refused openly',
-      bdManager: 'refused openly',
+      otherAssociate: 'refused silently',
+      bdManager: 'refused silently',
       ...SILENT_FOR_THE_ROLELESS,
     });
   });
@@ -321,7 +322,7 @@ describe('meeting reports (CLI 79 to CLI 82)', () => {
       answers((actor, access) => clientsPolicy.readMeetingReport(actor, access, shared)),
     ).toEqual({
       owner: 'allowed',
-      otherAssociate: 'refused openly',
+      otherAssociate: 'refused silently',
       bdManager: 'allowed',
       ...SILENT_FOR_THE_ROLELESS,
     });

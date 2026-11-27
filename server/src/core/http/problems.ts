@@ -555,6 +555,12 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   ChecklistItemLabelTaken: 409,
   /** #284. Copying fills an empty checklist; adding item by item is the fix. */
   ChecklistNotEmpty: 409,
+  /** #291. One draft at a time: finishing the one there is, is the fix. */
+  MeetingReportDraftOpen: 409,
+  /** #291. Shared, and so fixed (TDD 4.7): nothing to do but read it. */
+  MeetingReportShared: 409,
+  /** #291. Discarded, and kept as it was: starting another is the fix. */
+  MeetingReportDiscarded: 409,
   /** NOTE_REQUIRED. The note box is the fix, so 400, as RefusalNeedsAComment is. */
   MovingBackNeedsANote: 400,
 };
