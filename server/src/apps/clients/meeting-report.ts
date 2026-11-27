@@ -117,27 +117,43 @@ export function defaultPeriodOf(
  * `{ from?, to? }`, from a request body: either left out is the period offered. Never ends after
  * today, and never starts after it ends.
  */
-export function readPeriod(body: unknown, offered: Period, today: CalendarDate): Period {
+/** Makes the error a report's own reader throws, naming the field to fix. */
+export type Invalid = (field: string, message: string) => Error;
+
+const invalidMeetingReport: Invalid = (field, message) => new InvalidMeetingReport(field, message);
+
+export function readPeriod(
+  body: unknown,
+  offered: Period,
+  today: CalendarDate,
+  invalid: Invalid = invalidMeetingReport,
+): Period {
   const fields = fieldsOf(body);
-  const from = readDay(fields.from, 'from', offered.from, 'the first day it covers');
-  const to = readDay(fields.to, 'to', offered.to, 'the last day it covers');
+  const from = readDay(fields.from, 'from', offered.from, 'the first day it covers', invalid);
+  const to = readDay(fields.to, 'to', offered.to, 'the last day it covers', invalid);
 
   if (to > today) {
-    throw new InvalidMeetingReport('to', 'That day has not come yet. End it today or earlier.');
+    throw invalid('to', 'That day has not come yet. End it today or earlier.');
   }
   if (from > to) {
-    throw new InvalidMeetingReport('from', 'Start it on or before the day it ends.');
+    throw invalid('from', 'Start it on or before the day it ends.');
   }
 
   return { from, to };
 }
 
-function readDay(value: unknown, field: string, offered: CalendarDate, what: string): CalendarDate {
+function readDay(
+  value: unknown,
+  field: string,
+  offered: CalendarDate,
+  what: string,
+  invalid: Invalid,
+): CalendarDate {
   if (value === undefined || value === null || value === '') {
     return offered;
   }
   if (!isCalendarDate(value)) {
-    throw new InvalidMeetingReport(field, `Give ${what} as a date.`);
+    throw invalid(field, `Give ${what} as a date.`);
   }
 
   return value;
@@ -279,16 +295,20 @@ export function freshSections(): ReportSection[] {
  * named one given new words, blank or null emptying it, those left out kept as they are. A key
  * the report has no section for is refused.
  */
-export function readSections(body: unknown, current: readonly ReportSection[]): ReportSection[] {
+export function readSections(
+  body: unknown,
+  current: readonly ReportSection[],
+  invalid: Invalid = invalidMeetingReport,
+): ReportSection[] {
   const given = fieldsOf(body).sections;
   if (typeof given !== 'object' || given === null || Array.isArray(given)) {
-    throw new InvalidMeetingReport('sections', 'Say what to write in each section.');
+    throw invalid('sections', 'Say what to write in each section.');
   }
 
   const asked = given as Record<string, unknown>;
   for (const key of Object.keys(asked)) {
     if (!current.some((section) => section.key === key)) {
-      throw new InvalidMeetingReport(`sections.${key}`, 'This report has no such section.');
+      throw invalid(`sections.${key}`, 'This report has no such section.');
     }
   }
 
@@ -299,15 +319,12 @@ export function readSections(body: unknown, current: readonly ReportSection[]): 
 
     const value = asked[section.key];
     if (value !== null && typeof value !== 'string') {
-      throw new InvalidMeetingReport(
-        `sections.${section.key}`,
-        `Write ${section.heading} as text.`,
-      );
+      throw invalid(`sections.${section.key}`, `Write ${section.heading} as text.`);
     }
 
     const text = (value ?? '').trim();
     if (text.length > MAX_SECTION_LENGTH) {
-      throw new InvalidMeetingReport(
+      throw invalid(
         `sections.${section.key}`,
         `Keep ${section.heading} to ${String(MAX_SECTION_LENGTH)} characters.`,
       );

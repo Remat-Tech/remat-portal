@@ -357,6 +357,68 @@ describe('meeting reports (CLI 79 to CLI 82)', () => {
   });
 });
 
+describe('CEO reports (#292)', () => {
+  const ESI_BDM = { id: ESI, name: 'Esi Boateng' };
+  const draft = { id: '9', author: ESI_BDM, status: 'DRAFT' as const };
+  const submitted = { ...draft, status: 'SUBMITTED' as const };
+
+  /** Somebody with no clients role whom the organisation names as its Chief Executive. */
+  const chief: [Actor, ClientsAccess] = [person(ABENA), { holds: [], isChiefExecutive: true }];
+  const otherBdManager: [Actor, ClientsAccess] = [person(KOFI), holding('BD_MANAGER')];
+
+  it('are drafted by a BD manager alone', () => {
+    expect(answers((actor, access) => clientsPolicy.ceoReport(actor, access))).toEqual({
+      owner: 'refused openly',
+      otherAssociate: 'refused openly',
+      bdManager: 'allowed',
+      ...SILENT_FOR_THE_ROLELESS,
+    });
+    expect(answer(clientsPolicy.ceoReport(...chief))).toBe('refused silently');
+  });
+
+  it('are read by their author, and by the Chief Executive once submitted, and nobody else', () => {
+    expect(answers((actor, access) => clientsPolicy.readCeoReport(actor, access, draft))).toEqual({
+      owner: 'refused silently',
+      otherAssociate: 'refused silently',
+      bdManager: 'allowed',
+      ...SILENT_FOR_THE_ROLELESS,
+    });
+    expect(answer(clientsPolicy.readCeoReport(...otherBdManager, submitted))).toBe(
+      'refused silently',
+    );
+    expect(answer(clientsPolicy.readCeoReport(...chief, draft))).toBe('refused silently');
+    expect(answer(clientsPolicy.readCeoReport(...chief, submitted))).toBe('allowed');
+  });
+
+  it('are changed by their author alone; the Chief Executive is told so', () => {
+    expect(answer(clientsPolicy.writeCeoReport(...cast.bdManager, draft))).toBe('allowed');
+    expect(answer(clientsPolicy.writeCeoReport(...otherBdManager, draft))).toBe('refused silently');
+    expect(answer(clientsPolicy.writeCeoReport(...chief, submitted))).toBe('refused openly');
+  });
+
+  /* NFR CLI SEC 05: the list and the lookup are scoped by the query, from this. */
+  it("are scoped to a BD manager's own, and every submitted one for the Chief Executive", () => {
+    expect(clientsPolicy.ceoReportScope(...cast.bdManager)).toEqual({
+      authorId: ESI,
+      everySubmitted: false,
+    });
+    expect(clientsPolicy.ceoReportScope(...chief)).toEqual({
+      authorId: null,
+      everySubmitted: true,
+    });
+    expect(clientsPolicy.ceoReportScope(...cast.owner)).toBeUndefined();
+    expect(clientsPolicy.ceoReportScope(...cast.nobody)).toBeUndefined();
+  });
+
+  it('are the one door into clients the Chief Executive has, and the tile shows for them', () => {
+    expect(answer(clientsPolicy.enterCeoReports(...chief))).toBe('allowed');
+    expect(answer(clientsPolicy.enter(...chief))).toBe('refused silently');
+    expect(answer(clientsPolicy.seeTile(...chief))).toBe('allowed');
+    expect(answer(clientsPolicy.read(...chief))).toBe('refused silently');
+    expect(answer(clientsPolicy.enterCeoReports(...cast.nobody))).toBe('refused silently');
+  });
+});
+
 describe('roles (CLI 94)', () => {
   it('are granted and ended by a System Administrator, and refused openly to either role', () => {
     expect(answers((actor, access) => clientsPolicy.manageRoles(actor, access, '12'))).toEqual({

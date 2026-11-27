@@ -87,6 +87,8 @@ import type { ClientsReassignRepository } from './apps/clients/reassign.db.js';
 import { ReassignService } from './apps/clients/reassign.service.js';
 import type { ClientsMeetingReportRepository } from './apps/clients/meeting-report.db.js';
 import { MeetingReportService } from './apps/clients/meeting-report.service.js';
+import type { ClientsCeoReportRepository } from './apps/clients/ceo-report.db.js';
+import { CeoReportService } from './apps/clients/ceo-report.service.js';
 import type { ClientsReportContentsRepository } from './apps/clients/meeting-report-contents.db.js';
 import type { ClientsLinks } from './apps/clients/email.js';
 import type { ClientsContactRepository } from './apps/clients/contact.db.js';
@@ -270,6 +272,8 @@ export interface Application {
   clientsReportContents?: ClientsReportContentsRepository;
   /** #291. Telling BD managers a report is shared: where to link, and nudging the outbox. */
   clientsReportMail?: { links: ClientsLinks; nudge: () => void };
+  /** #292. CEO reports. */
+  clientsCeoReports?: ClientsCeoReportRepository;
   /** #284. Deals' and POCs' checks and their ticks. */
   clientsChecks?: ClientsCheckRepository;
   /** #284. The checklists themselves, which setup keeps: no setup routes without them. */
@@ -604,6 +608,8 @@ export function buildApp(parts: Application): Express {
      Still being built, so not mounted in production: `/api/clients` answers 404 there until it
      goes live, as the directory's did. The client hides the screen on the same terms. */
   const clientsRoles = process.env.NODE_ENV === 'production' ? undefined : parts.clientsRoles;
+  /* #292. Whoever the organisation names as its Chief Executive, who reads the CEO reports. */
+  const chiefExecutive = () => parts.organisation.chiefExecutiveId();
 
   if (clientsRoles !== undefined) {
     /* A client's page lists its deals, so there are client routes only with both. */
@@ -650,10 +656,24 @@ export function buildApp(parts: Application): Express {
             standings,
           );
 
+    /* #289. The dashboard, which the CEO report (#292) takes the pipeline as it stands from. */
+    const dashboard =
+      clientParts === undefined || pocs === undefined
+        ? undefined
+        : new DashboardService(
+            parts.guard,
+            clientsRoles,
+            clientParts.opportunities,
+            clientParts.clients,
+            pocs,
+            standings,
+          );
+
     app.use(
       '/api',
       clientsRoutes({
-        door: clientsDoor(parts.guard, clientsRoles),
+        door: clientsDoor(parts.guard, clientsRoles, chiefExecutive),
+        chiefExecutive,
         grants: clientsRoles,
         roles: new RoleService(parts.guard, clientsRoles, parts.employees),
         setup:
@@ -735,16 +755,20 @@ export function buildApp(parts: Application): Express {
                 parts.clientsReassign,
                 standings,
               ),
-        dashboard:
-          clientParts === undefined || pocs === undefined
+        dashboard,
+        ceoReports:
+          parts.clientsCeoReports === undefined ||
+          parts.clientsReportMail === undefined ||
+          dashboard === undefined
             ? undefined
-            : new DashboardService(
+            : new CeoReportService(
                 parts.guard,
                 clientsRoles,
-                clientParts.opportunities,
-                clientParts.clients,
-                pocs,
-                standings,
+                parts.clientsCeoReports,
+                dashboard,
+                chiefExecutive,
+                parts.employees,
+                parts.clientsReportMail,
               ),
         checklists:
           parts.clientsChecks === undefined
@@ -771,7 +795,10 @@ export function buildApp(parts: Application): Express {
   app.use(
     '/api',
     portalRoutes({
-      apps: clientsRoles === undefined ? [] : [clientsVisibility(parts.guard, clientsRoles)],
+      apps:
+        clientsRoles === undefined
+          ? []
+          : [clientsVisibility(parts.guard, clientsRoles, chiefExecutive)],
     }),
   );
 

@@ -17,7 +17,8 @@ import express, {
   Router,
 } from 'express';
 import { actorOf } from '../../core/http/identify.js';
-import { accessOf, viewsOf } from './access.js';
+import { accessOf, type ChiefExecutive, viewsOf } from './access.js';
+import type { CeoReportService } from './ceo-report.service.js';
 import type { ActivityService, Logged } from './activity.service.js';
 import type { Checklist, Tick } from './checklist.js';
 import type { ChecklistService } from './checklist.service.js';
@@ -79,6 +80,10 @@ export interface ClientsRoutes {
   reassign?: ReassignService;
   /** Meeting reports. #291. Optional, for the same reason. */
   meetingReports?: MeetingReportService;
+  /** CEO reports. #292. Optional, for the same reason. */
+  ceoReports?: CeoReportService;
+  /** Who the Chief Executive is, for `/clients/me` to show them the CEO reports. #292. */
+  chiefExecutive?: ChiefExecutive;
 }
 
 export function clientsRoutes({
@@ -96,6 +101,8 @@ export function clientsRoutes({
   dashboard,
   reassign,
   meetingReports,
+  ceoReports,
+  chiefExecutive,
 }: ClientsRoutes): Router {
   const routes = Router();
 
@@ -107,7 +114,7 @@ export function clientsRoutes({
   routes.get('/clients/me', (_request: Request, response: Response, next: NextFunction) => {
     const actor = actorOf(response);
 
-    void accessOf(actor, grants)
+    void accessOf(actor, grants, chiefExecutive)
       .then((access) => {
         response.json(viewsOf(actor, access));
       })
@@ -168,6 +175,10 @@ export function clientsRoutes({
 
   if (meetingReports !== undefined) {
     meetingReportRoutes(routes, meetingReports);
+  }
+
+  if (ceoReports !== undefined) {
+    ceoReportRoutes(routes, ceoReports);
   }
 
   if (dashboard !== undefined) {
@@ -293,6 +304,83 @@ function meetingReportRoutes(routes: Router, reports: MeetingReportService): voi
   routes.post(
     '/clients/meeting-reports/:id/figures',
     answer(async (request, response) => reports.updateFigures(actorOf(response), idOf(request))),
+  );
+}
+
+/**
+ * CEO reports, under `/clients/ceo-reports`. #292, Clients SRS CLI 83. A BD manager drafts,
+ * changes and submits their own; the Chief Executive reads what was submitted. Each asks
+ * `clientsPolicy` through the service.
+ */
+function ceoReportRoutes(routes: Router, reports: CeoReportService): void {
+  /** A BD manager's own, their draft and the period offered; the Chief Executive's received. */
+  routes.get(
+    '/clients/ceo-reports',
+    answer(async (_request, response) => reports.list(actorOf(response))),
+  );
+
+  /** `{ from?, to? }`: a new draft for that period. */
+  routes.post(
+    '/clients/ceo-reports',
+    answer((request, response) => reports.draft(actorOf(response), request.body), 201),
+  );
+
+  /** One report as a PDF, to whoever may open it, a draft marked as one. */
+  routes.get(
+    '/clients/ceo-reports/:id/pdf',
+    (request: Request, response: Response, next: NextFunction) => {
+      void reports
+        .pdf(actorOf(response), idOf(request))
+        .then(({ name, bytes }) => {
+          response
+            .status(200)
+            .type('application/pdf')
+            .setHeader('Content-Disposition', `attachment; filename="${name}"`)
+            .setHeader('Cache-Control', 'no-store')
+            .send(bytes);
+        })
+        .catch(next);
+    },
+  );
+
+  /** One report, as saved. */
+  routes.get(
+    '/clients/ceo-reports/:id',
+    answer(async (request, response) => reports.read(actorOf(response), idOf(request))),
+  );
+
+  /** `{ from?, to? }`: a draft's new period, its figures saved afresh for it. */
+  routes.patch(
+    '/clients/ceo-reports/:id',
+    answer(async (request, response) =>
+      reports.change(actorOf(response), idOf(request), request.body),
+    ),
+  );
+
+  /** `{ sections: { [key]: text | null } }`: what its author writes. */
+  routes.patch(
+    '/clients/ceo-reports/:id/sections',
+    answer(async (request, response) =>
+      reports.writeSections(actorOf(response), idOf(request), request.body),
+    ),
+  );
+
+  /** Saves a draft's figures afresh. */
+  routes.post(
+    '/clients/ceo-reports/:id/figures',
+    answer(async (request, response) => reports.updateFigures(actorOf(response), idOf(request))),
+  );
+
+  /** Throws a draft away, keeping it. */
+  routes.post(
+    '/clients/ceo-reports/:id/discard',
+    answer(async (request, response) => reports.discard(actorOf(response), idOf(request))),
+  );
+
+  /** Submits it to the Chief Executive: fixed, readable by them, and them emailed. */
+  routes.post(
+    '/clients/ceo-reports/:id/submit',
+    answer(async (request, response) => reports.submit(actorOf(response), idOf(request))),
   );
 }
 

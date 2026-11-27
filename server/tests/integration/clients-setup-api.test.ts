@@ -490,15 +490,37 @@ describe('which parts of clients a person has', () => {
     /* Past proposals, #281, are anybody's with a role, and not a System Administrator's alone. */
     expect(await viewsOf(bdManager)).toEqual([
       200,
-      { setUp: true, manageRoles: false, pastProposals: true, pocs: true },
+      {
+        setUp: true,
+        manageRoles: false,
+        pastProposals: true,
+        pocs: true,
+        /* #292. A BD manager drafts CEO reports; only the Chief Executive reads them all. */
+        draftCeoReports: true,
+        readCeoReports: false,
+      },
     ]);
     expect(await viewsOf(associate)).toEqual([
       200,
-      { setUp: false, manageRoles: false, pastProposals: true, pocs: true },
+      {
+        setUp: false,
+        manageRoles: false,
+        pastProposals: true,
+        pocs: true,
+        draftCeoReports: false,
+        readCeoReports: false,
+      },
     ]);
     expect(await viewsOf(sysadmin)).toEqual([
       200,
-      { setUp: false, manageRoles: true, pastProposals: false, pocs: false },
+      {
+        setUp: false,
+        manageRoles: true,
+        pastProposals: false,
+        pocs: false,
+        draftCeoReports: false,
+        readCeoReports: false,
+      },
     ]);
     expect(await viewsOf(nobody)).toEqual([404, NO_SUCH_ROUTE]);
   });

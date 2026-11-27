@@ -129,6 +129,8 @@ describe('the entities an entry can be about', () => {
       'clients_checklist_item',
       /* #291. A meeting report: what was claimed for a period, and when it was shared. */
       'clients_meeting_report',
+      /* #292. What a BD manager told the CEO, and when it was submitted, and to whom. */
+      'clients_ceo_report',
     ]);
   });
 });

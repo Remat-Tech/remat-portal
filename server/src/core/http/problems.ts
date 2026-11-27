@@ -561,6 +561,14 @@ const REFUSED_BY_A_RULE: Readonly<Record<string, number>> = {
   MeetingReportShared: 409,
   /** #291. Discarded, and kept as it was: starting another is the fix. */
   MeetingReportDiscarded: 409,
+  /** #292. One draft at a time: submitting or discarding the one there is, is the fix. */
+  CeoReportDraftOpen: 409,
+  /** #292. Submitted, and so fixed: nothing to do but read it. */
+  CeoReportSubmitted: 409,
+  /** #292. Discarded, and kept as it was: starting another is the fix. */
+  CeoReportDiscarded: 409,
+  /** #292. Nobody to send it to: naming the Chief Executive is the fix. */
+  NoChiefExecutive: 409,
   /** NOTE_REQUIRED. The note box is the fix, so 400, as RefusalNeedsAComment is. */
   MovingBackNeedsANote: 400,
 };

@@ -10,6 +10,7 @@ import { createHash } from 'node:crypto';
 import { type CalendarDate, formatDay } from '../../core/calendar/time.js';
 import { BRAND_NAME, oneLine, renderEmail } from '../../core/notification/layout.js';
 import type { NewOutboxEmail } from '../../core/notification/outbox.js';
+import { type CeoReport, type CeoReportFigures, moneyInWords } from './ceo-report.js';
 import type { MeetingReport, ReportTally } from './meeting-report.js';
 import type { Poc, PocFlag } from './poc.js';
 import { flagsIn, type PocAlert, toldKeyOf } from './poc-alerts.js';
@@ -32,6 +33,8 @@ export interface ClientsLinks {
   poc(id: string): string;
   /** One meeting report's page. #291. */
   report(id: string): string;
+  /** One CEO report's page. #292. */
+  ceoReport(id: string): string;
 }
 
 /** Links into Clients at this address. */
@@ -43,6 +46,7 @@ export function clientsLinks(appUrl: string): ClientsLinks {
     pocs: () => `${base}/#/clients/pocs`,
     poc: (id) => `${base}/#/clients/poc/${encodeURIComponent(id)}`,
     report: (id) => `${base}/#/clients/report/${encodeURIComponent(id)}`,
+    ceoReport: (id) => `${base}/#/clients/ceo-report/${encodeURIComponent(id)}`,
   };
 }
 
@@ -206,6 +210,59 @@ export function reportSharedEmail(facts: {
     text,
     html,
     dedupeKey: `${REPORT_SHARED_EMAIL}:${report.id}:${bdManager.id}`,
+  };
+}
+
+/** A CEO report's email's name in the outbox. #292. */
+export const CEO_REPORT_EMAIL = 'CLIENTS_CEO_REPORT';
+
+/**
+ * A CEO report submitted, to the Chief Executive, who may now read it (#292): its headline
+ * figures and a link. Once per report, which its dedupe key holds. Sent only because its author
+ * submitted it.
+ */
+export function ceoReportEmail(facts: {
+  ceo: Recipient;
+  report: CeoReport;
+  figures: CeoReportFigures;
+  links: ClientsLinks;
+}): NewOutboxEmail {
+  const { ceo, report, figures, links } = facts;
+  const days = periodInWords(report.period.from, report.period.to);
+  const recorded =
+    figures.pipeline.recorded.length === 0
+      ? 'None recorded'
+      : figures.pipeline.recorded.map(moneyInWords).join(' · ');
+
+  const { text, html } = renderEmail({
+    preview: `${report.author.name}, ${days}`,
+    greeting: `Hello ${ceo.firstName},`,
+    paragraphs: [`${report.author.name} has submitted their report to you for ${days}.`],
+    facts: [
+      { label: 'Meeting reports', value: String(figures.totals.reports) },
+      { label: 'Activities', value: String(figures.totals.activities) },
+      { label: 'Stage changes', value: String(figures.totals.stageMoves) },
+      { label: 'Open deals', value: String(figures.pipeline.opportunities) },
+      { label: 'Value recorded', value: recorded },
+      { label: 'POCs running', value: String(figures.pipeline.pocsTotal) },
+    ],
+    action: { label: 'Open the report', href: links.ceoReport(report.id) },
+    afterAction: ['You can download it as a PDF from the report.'],
+    signOff: BRAND_NAME,
+    footer: ['You get this because you are named as the Chief Executive in the portal.'],
+  });
+
+  return {
+    kind: CEO_REPORT_EMAIL,
+    recipientEmployeeId: ceo.id,
+    to: ceo.workEmail,
+    fromName: `${report.author.name} via ${BRAND_NAME}`,
+    replyTo: null,
+    senderEmployeeId: report.author.id,
+    subject: oneLine(`Report to the CEO from ${report.author.name}: ${days}`),
+    text,
+    html,
+    dedupeKey: `${CEO_REPORT_EMAIL}:${report.id}`,
   };
 }
 

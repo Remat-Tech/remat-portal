@@ -4,6 +4,7 @@ import { money, weekday } from '../../format';
 import { Icon } from '../../Icon';
 import { Notice, type Problem, problemFrom } from '../../problem';
 import { STAGE_NAME, WaitingOnCell } from './Deals';
+import { MyCeoReports } from './CeoReports';
 import { MeetingReports } from './MeetingReports';
 
 /**
@@ -179,6 +180,9 @@ export function MyPipeline({ onSignedOut }: { onSignedOut: () => void }) {
 
       {/* #291. What I bring to my meeting with a BD manager. */}
       <MeetingReports onSignedOut={onSignedOut} />
+
+      {/* #292. A BD manager's reports to the CEO; nothing for anybody else. */}
+      <MyCeoReports onSignedOut={onSignedOut} />
     </section>
   );
 }

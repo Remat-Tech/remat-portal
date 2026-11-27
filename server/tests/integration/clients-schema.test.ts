@@ -44,6 +44,7 @@ const TABLES = [
   'clients_notification_run',
   'clients_poc_alert',
   'clients_meeting_report',
+  'clients_ceo_report',
 ];
 
 /** A client nobody else in a test has, owned by `owner`. */
@@ -3455,6 +3456,105 @@ describe('a POC flag the morning alerts told', () => {
 
 /* ------------------------------------------------------------ meeting reports, #291 */
 
+describe('a CEO report', () => {
+  const DRAFT = `INSERT INTO clients_ceo_report (author_id, period_from, period_to, figures)
+                 VALUES ($1, $2, $3, '{}') RETURNING id`;
+  const period = ['2026-11-01', '2026-11-27'];
+
+  async function settle(id: string, status: 'SUBMITTED' | 'DISCARDED'): Promise<void> {
+    await admin.query(
+      status === 'SUBMITTED'
+        ? `UPDATE clients_ceo_report SET status = 'SUBMITTED', submitted_at = now(),
+                  submitted_to = $2 WHERE id = $1`
+        : `UPDATE clients_ceo_report SET status = 'DISCARDED', discarded_at = now()
+            WHERE id = $1 AND $2::bigint IS NOT NULL`,
+      [id, kofi],
+    );
+  }
+
+  it('records its author and period, and starts a draft with no sections', async () => {
+    const { rows } = await admin.query(
+      `${DRAFT.replace('RETURNING id', '')}
+       RETURNING author_id, period_from::text, period_to::text, status, sections, submitted_at,
+                 submitted_to, discarded_at`,
+      [ama, ...period],
+    );
+
+    expect(rows[0]).toMatchObject({
+      author_id: ama,
+      period_from: '2026-11-01',
+      period_to: '2026-11-27',
+      status: 'DRAFT',
+      sections: [],
+      submitted_at: null,
+      submitted_to: null,
+      discarded_at: null,
+    });
+  });
+
+  it('covers a period that runs forwards, and keeps one draft each', async () => {
+    expect(await refusedBy(DRAFT, [ama, '2026-11-27', '2026-11-01'])).toBe(
+      'clients_ceo_report_period_runs_forwards',
+    );
+    expect(await refusedBy(DRAFT, [ama, ...period])).toBeNull();
+    expect(await refusedBy(DRAFT, [ama, ...period])).toBe('uq_clients_ceo_report_one_draft');
+    expect(await refusedBy(DRAFT, [kofi, ...period])).toBeNull();
+  });
+
+  it('is submitted to somebody, exactly when it says so', async () => {
+    const { rows } = await admin.query<{ id: string }>(DRAFT, [ama, ...period]);
+
+    expect(
+      await refusedBy(`UPDATE clients_ceo_report SET status = 'SUBMITTED' WHERE id = $1`, [
+        rows[0].id,
+      ]),
+    ).toBe('clients_ceo_report_submitted_when');
+    expect(
+      await refusedBy(
+        `UPDATE clients_ceo_report SET status = 'SUBMITTED', submitted_at = now() WHERE id = $1`,
+        [rows[0].id],
+      ),
+    ).toBe('clients_ceo_report_submitted_when');
+    expect(
+      await refusedBy(`UPDATE clients_ceo_report SET status = 'DISCARDED' WHERE id = $1`, [
+        rows[0].id,
+      ]),
+    ).toBe('clients_ceo_report_discarded_when');
+    expect(
+      await refusedBy(`UPDATE clients_ceo_report SET sections = '{}' WHERE id = $1`, [rows[0].id]),
+    ).toBe('clients_ceo_report_sections_a_list');
+  });
+
+  /* TDD 4.7: submitted, or discarded, it never changes again, whoever asks. */
+  it('changes while a draft, and never once submitted or discarded', async () => {
+    const CHANGE = `UPDATE clients_ceo_report SET period_from = '2026-11-02' WHERE id = $1`;
+    const submitted = (await admin.query<{ id: string }>(DRAFT, [ama, ...period])).rows[0].id;
+    expect(await refusedBy(CHANGE, [submitted])).toBeNull();
+    await settle(submitted, 'SUBMITTED');
+
+    const discarded = (await admin.query<{ id: string }>(DRAFT, [ama, ...period])).rows[0].id;
+    await settle(discarded, 'DISCARDED');
+
+    for (const id of [submitted, discarded]) {
+      expect(await refusedBy(CHANGE, [id])).toBe('clients_ceo_report_fixed_once_settled');
+    }
+  });
+
+  it('is written to the audit log by the database', async () => {
+    await admin.query(
+      `SELECT set_config('lms.audit.actor', 'employee 7', true),
+              set_config('lms.audit.actor_employee_id', $1, true)`,
+      [ama],
+    );
+    const { rows } = await admin.query<{ id: string }>(DRAFT, [ama, ...period]);
+
+    const log = await admin.query(
+      `SELECT action, entity_id FROM audit_log WHERE entity = 'clients_ceo_report' ORDER BY id`,
+    );
+    expect(log.rows).toEqual([{ action: 'CREATE', entity_id: rows[0].id }]);
+  });
+});
+
 describe('a meeting report', () => {
   const DRAFT = `INSERT INTO clients_meeting_report (author_id, period_from, period_to, figures)
                  VALUES ($1, $2, $3, '{}') RETURNING id`;
@@ -3678,6 +3778,17 @@ describe('the application role', () => {
       { table_name: 'clients_activity', column_name: 'opportunity_id' },
       { table_name: 'clients_activity', column_name: 'outcome' },
       { table_name: 'clients_activity', column_name: 'with_whom' },
+      /* #292. A draft CEO report's period, figures and sections, and its submitting or
+         discarding; never its author. */
+      { table_name: 'clients_ceo_report', column_name: 'discarded_at' },
+      { table_name: 'clients_ceo_report', column_name: 'figures' },
+      { table_name: 'clients_ceo_report', column_name: 'figures_at' },
+      { table_name: 'clients_ceo_report', column_name: 'period_from' },
+      { table_name: 'clients_ceo_report', column_name: 'period_to' },
+      { table_name: 'clients_ceo_report', column_name: 'sections' },
+      { table_name: 'clients_ceo_report', column_name: 'status' },
+      { table_name: 'clients_ceo_report', column_name: 'submitted_at' },
+      { table_name: 'clients_ceo_report', column_name: 'submitted_to' },
       /* #284, CLI 42. A checklist item reworded, moved, marked for POC deals only, retired; never
          its checklist or group. */
       { table_name: 'clients_checklist_item', column_name: 'label' },

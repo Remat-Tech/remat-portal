@@ -38,6 +38,27 @@ const about = policyFor('clients');
 export interface ClientsAccess {
   /** The clients roles the actor holds today. Empty for most staff. */
   holds: readonly ClientsRole[];
+  /**
+   * Whether they are the person the organisation names as its Chief Executive, who reads the CEO
+   * reports submitted to them and nothing else in clients (#292). Asked only where it matters;
+   * left out, it is no.
+   */
+  isChiefExecutive?: boolean;
+}
+
+/** A CEO report, as reading and writing it need it. #292. */
+export interface CeoReportSubject {
+  id: string;
+  author: Named;
+  status: 'DRAFT' | 'SUBMITTED' | 'DISCARDED';
+}
+
+/** Which CEO reports somebody may see, for the query to apply (NFR CLI SEC 05). #292. */
+export interface CeoReportScope {
+  /** Their own, as a BD manager; null for somebody who writes none. */
+  authorId: string | null;
+  /** Every submitted one too: the Chief Executive's. */
+  everySubmitted: boolean;
 }
 
 /** The most a person may do in clients. A BD manager who is also an associate is a BD manager. */
@@ -164,7 +185,7 @@ export const clientsPolicy = {
    * shown that clients is there.
    */
   seeTile(actor: Actor, access: ClientsAccess): Decision {
-    return mayEnter(actor, access)
+    return mayEnter(actor, access) || access.isChiefExecutive === true
       ? about.allow(actor, 'seeTile')
       : nothingToSee(actor, 'seeTile', null);
   },
@@ -494,6 +515,65 @@ export const clientsPolicy = {
           'not its author',
           'Only whoever wrote a meeting report can change or share it.',
         );
+  },
+
+  /**
+   * Through the door to the CEO reports alone (#292): anybody who may enter clients, and the Chief
+   * Executive, who reads the reports submitted to them and is shown nothing else there.
+   */
+  enterCeoReports(actor: Actor, access: ClientsAccess): Decision {
+    return mayEnter(actor, access) || access.isChiefExecutive === true
+      ? about.allow(actor, 'enterCeoReports')
+      : nothingToSee(actor, 'enterCeoReports', null);
+  },
+
+  /**
+   * Which CEO reports somebody may list or open (#292, NFR CLI SEC 05): a BD manager their own,
+   * the Chief Executive every submitted one. Undefined for anybody else, who may see none.
+   */
+  ceoReportScope(actor: Actor, access: ClientsAccess): CeoReportScope | undefined {
+    const authorId = isBdManager(access) ? actor.employeeId : null;
+    const everySubmitted = access.isChiefExecutive === true && actor.employeeId !== null;
+
+    return authorId === null && !everySubmitted ? undefined : { authorId, everySubmitted };
+  },
+
+  /**
+   * Reading one CEO report (#292): the BD manager who wrote it, and the Chief Executive once it is
+   * submitted. Refused silently: to anybody else it is not there at all.
+   */
+  readCeoReport(actor: Actor, access: ClientsAccess, report: CeoReportSubject): Decision {
+    const author = isBdManager(access) && isSelfNamed(actor, report.author);
+    const chief = access.isChiefExecutive === true && report.status === 'SUBMITTED';
+
+    return author || chief
+      ? about.allow(actor, 'readCeoReport', report.id)
+      : about.refuse(
+          actor,
+          'readCeoReport',
+          report.id,
+          'not its author, and not the Chief Executive reading a submitted one',
+        );
+  },
+
+  /**
+   * Changing, discarding and submitting a CEO report (#292): the BD manager who wrote it, alone.
+   * Once submitted it is fixed for everybody, which the database refuses.
+   */
+  writeCeoReport(actor: Actor, access: ClientsAccess, report: CeoReportSubject): Decision {
+    if (isBdManager(access) && isSelfNamed(actor, report.author)) {
+      return about.allow(actor, 'writeCeoReport', report.id);
+    }
+
+    return clientsPolicy.readCeoReport(actor, access, report).allowed
+      ? about.refuseOpenly(
+          actor,
+          'writeCeoReport',
+          report.id,
+          'not its author',
+          'Only the BD manager who wrote a CEO report can change or submit it.',
+        )
+      : about.refuse(actor, 'writeCeoReport', report.id, 'not its author');
   },
 
   /** Drafting, reading and submitting the CEO report: a BD manager's (CLI 83, CLI 92). */
