@@ -3193,6 +3193,10 @@ export interface ClientsViews {
   pastProposals: boolean;
   /** The POC list and pages. Anybody with a role. #285. */
   pocs: boolean;
+  /** Drafting and submitting CEO reports. A BD manager's. #292. */
+  draftCeoReports: boolean;
+  /** Reading the CEO reports submitted to them. The Chief Executive's, who has nothing else. #292. */
+  readCeoReports: boolean;
 }
 
 export async function clientsViews(): Promise<ClientsViews> {
@@ -4696,7 +4700,15 @@ export async function shareMeetingReport(id: string): Promise<MeetingReportView>
  * included, which the PDF marks as one.
  */
 export async function downloadMeetingReportPdf(id: string): Promise<void> {
-  const response = await send(`/api/clients/meeting-reports/${encodeURIComponent(id)}/pdf`, {
+  await downloadPdf(
+    `/api/clients/meeting-reports/${encodeURIComponent(id)}/pdf`,
+    'meeting-report.pdf',
+  );
+}
+
+/** Saves a PDF the server makes, under the name it gives, or this one. */
+async function downloadPdf(path: string, fallback: string): Promise<void> {
+  const response = await send(path, {
     method: 'GET',
     credentials: 'same-origin',
   });
@@ -4710,7 +4722,7 @@ export async function downloadMeetingReportPdf(id: string): Promise<void> {
   const link = document.createElement('a');
 
   link.href = url;
-  link.download = named?.[1] ?? 'meeting-report.pdf';
+  link.download = named?.[1] ?? fallback;
   link.click();
 
   setTimeout(() => {
@@ -4749,4 +4761,105 @@ export async function updateMeetingReportFigures(id: string): Promise<MeetingRep
 /** A new draft, for that period, with its figures as they stand now. One draft at a time. */
 export async function draftMeetingReport(period: ReportPeriod): Promise<MeetingReport> {
   return request<MeetingReport>('POST', '/api/clients/meeting-reports', period);
+}
+
+/* ---------------------------------------------------------------- CEO reports, #292 */
+
+/** A BD manager's report to the CEO. */
+export interface CeoReport {
+  id: string;
+  author: { id: string; name: string };
+  period: ReportPeriod;
+  status: 'DRAFT' | 'SUBMITTED' | 'DISCARDED';
+  createdAt: string;
+  submittedAt: string | null;
+  submittedTo: { id: string; name: string } | null;
+  discardedAt: string | null;
+}
+
+/** One associate's line of the team table, from the meeting reports they shared in the period. */
+export interface CeoTeamRow {
+  author: { id: string; name: string };
+  reports: number;
+  activities: number;
+  stageMoves: number;
+  stepsDone: number;
+  stepsOverdue: number;
+  pocs: number;
+}
+
+/** A CEO report with its saved figures and sections, and what I may do to it. */
+export interface CeoReportView extends CeoReport {
+  team: CeoTeamRow[];
+  totals: Omit<CeoTeamRow, 'author'>;
+  /** What each associate wrote in the reports they shared, in the order they shared them. */
+  words: {
+    reportId: string;
+    author: { id: string; name: string };
+    period: ReportPeriod;
+    sharedAt: string;
+    sections: ReportSection[];
+  }[];
+  /** The pipeline as it stood when the figures were saved. */
+  pipeline: {
+    recorded: Money[];
+    opportunities: number;
+    clients: number;
+    noValue: number;
+    stages: { stage: DealStage; opportunities: number; recorded: Money[]; noValue: number }[];
+    pocs: Record<PocHealth, number>;
+    pocsTotal: number;
+  };
+  sections: ReportSection[];
+  figuresAt: string;
+  may: { change: boolean };
+}
+
+/** A BD manager's own CEO reports, and the Chief Executive's received ones. */
+export interface CeoReportsList {
+  mine: { reports: CeoReport[]; draftId: string | null; nextPeriod: ReportPeriod } | null;
+  received: CeoReport[] | null;
+}
+
+const CEO = '/api/clients/ceo-reports';
+const ceoPath = (id: string, rest = '') => `${CEO}/${encodeURIComponent(id)}${rest}`;
+
+export async function ceoReports(): Promise<CeoReportsList> {
+  return request<CeoReportsList>('GET', CEO);
+}
+
+export async function draftCeoReport(period: ReportPeriod): Promise<CeoReportView> {
+  return request<CeoReportView>('POST', CEO, period);
+}
+
+export async function ceoReport(id: string): Promise<CeoReportView> {
+  return request<CeoReportView>('GET', ceoPath(id));
+}
+
+export async function changeCeoReport(id: string, period: ReportPeriod): Promise<CeoReportView> {
+  return request<CeoReportView>('PATCH', ceoPath(id), period);
+}
+
+export async function writeCeoReportSections(
+  id: string,
+  sections: Record<string, string | null>,
+): Promise<CeoReportView> {
+  return request<CeoReportView>('PATCH', ceoPath(id, '/sections'), { sections });
+}
+
+export async function updateCeoReportFigures(id: string): Promise<CeoReportView> {
+  return request<CeoReportView>('POST', ceoPath(id, '/figures'));
+}
+
+export async function discardCeoReport(id: string): Promise<CeoReportView> {
+  return request<CeoReportView>('POST', ceoPath(id, '/discard'));
+}
+
+/** Submits it to the Chief Executive: fixed, readable by them, and them emailed. */
+export async function submitCeoReport(id: string): Promise<CeoReportView> {
+  return request<CeoReportView>('POST', ceoPath(id, '/submit'));
+}
+
+export async function downloadCeoReportPdf(id: string): Promise<void> {
+  await downloadPdf(ceoPath(id, '/pdf'), 'report-to-the-ceo.pdf');
 }

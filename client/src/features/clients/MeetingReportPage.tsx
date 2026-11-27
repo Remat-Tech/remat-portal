@@ -9,7 +9,6 @@ import {
   type MeetingReportView,
   type ReportContents,
   type ReportStep,
-  type ReportSection,
   type ReportTally,
   updateMeetingReportFigures,
   writeMeetingReportSections,
@@ -22,7 +21,7 @@ import { STAGE_NAME } from './Deals';
 import { PeriodDialog } from './MeetingReports';
 import { HEALTH_NAME, HealthPill } from './PocsView';
 import { Count, Tile, Tiles } from './Tiles';
-import { Dialog, DialogFoot, Field, useSending } from './ui';
+import { ConfirmDialog, SectionsDialog, todayInAccra, WrittenSections } from './ReportParts';
 
 const STATUS_NAME: Record<MeetingReportView['status'], string> = {
   DRAFT: 'Draft',
@@ -202,32 +201,48 @@ export function MeetingReportPage({ id, onSignedOut }: { id: string; onSignedOut
             />
           ) : open === 'sections' ? (
             <SectionsDialog
-              id={id}
               sections={report.sections}
-              onWritten={(written) => {
-                setReport(written);
-                setOpen(undefined);
-              }}
+              save={(words) =>
+                writeMeetingReportSections(id, words).then((written) => {
+                  setReport(written);
+                  setOpen(undefined);
+                })
+              }
               onClose={() => {
                 setOpen(undefined);
               }}
               onSignedOut={onSignedOut}
             />
           ) : open === 'share' ? (
-            <ShareDialog
-              id={id}
-              onShared={(shared) => {
-                setReport(shared);
-                setOpen(undefined);
-              }}
+            /* Sharing, once asked: the figures are saved a last time and it is fixed, and every BD
+               manager may read it and is emailed (the user, 25 November 2026). */
+            <ConfirmDialog
+              title="Share this report?"
+              intro="Its figures are saved as they stand now, and it can't be changed after. The BD managers can then read it, and each gets an email."
+              doing="Sharing…"
+              done="Share"
+              run={() =>
+                shareMeetingReport(id).then((shared) => {
+                  setReport(shared);
+                  setOpen(undefined);
+                })
+              }
               onClose={() => {
                 setOpen(undefined);
               }}
               onSignedOut={onSignedOut}
             />
           ) : open === 'discard' ? (
-            <DiscardDialog
-              id={id}
+            <ConfirmDialog
+              title="Discard this draft?"
+              intro="It leaves your reports, and you can start another. It is kept on record."
+              doing="Discarding…"
+              done="Discard"
+              run={() =>
+                discardMeetingReport(id).then(() => {
+                  window.location.hash = '#/clients';
+                })
+              }
               onClose={() => {
                 setOpen(undefined);
               }}
@@ -411,179 +426,4 @@ function StepLine({
 
 function ClientLink({ client }: { client: { id: string; name: string } }) {
   return <a href={`#/clients/client/${client.id}`}>{client.name}</a>;
-}
-
-/**
- * What the author wrote, under the figures: placeholder headings until the team confirms what a
- * report holds (the user, 25 November 2026). None is needed to share it.
- */
-function WrittenSections({
-  sections,
-  onWrite,
-}: {
-  sections: readonly ReportSection[];
-  /** Opens the dialog; only where the reader may write them. */
-  onWrite?: () => void;
-}) {
-  return (
-    <section className="clients-panel clients-report-section clients-report-written">
-      <header className="clients-panel-head">
-        <div>
-          <h3>Written sections</h3>
-          <p className="muted">Placeholders until the team confirms what a report holds.</p>
-        </div>
-        {onWrite === undefined ? null : (
-          <button type="button" onClick={onWrite}>
-            Write sections
-          </button>
-        )}
-      </header>
-      <dl className="clients-report-written-list">
-        {sections.map((section) => (
-          <div key={section.key}>
-            <dt>{section.heading}</dt>
-            <dd className={section.body === null ? 'muted' : undefined}>
-              {section.body ?? 'Nothing written'}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </section>
-  );
-}
-
-/** Writing every section in one go: a text box each, each may be left empty. */
-function SectionsDialog({
-  id,
-  sections,
-  onWritten,
-  onClose,
-  onSignedOut,
-}: {
-  id: string;
-  sections: readonly ReportSection[];
-  onWritten: (report: MeetingReportView) => void;
-  onClose: () => void;
-  onSignedOut: () => void;
-}) {
-  const [words, setWords] = useState<Record<string, string>>(() =>
-    Object.fromEntries(sections.map((section) => [section.key, section.body ?? ''])),
-  );
-  const sending = useSending(() => undefined, onSignedOut);
-  const fields = sections.map((section) => `sections.${section.key}`);
-  const other = sending.other(fields);
-
-  return (
-    <Dialog title="Write sections" intro="Each may be left empty." wide onClose={onClose}>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          sending.send(() => writeMeetingReportSections(id, words).then(onWritten));
-        }}
-      >
-        {sections.map((section) => (
-          <Field
-            key={section.key}
-            label={section.heading}
-            error={sending.errorFor(`sections.${section.key}`)}
-          >
-            {({ id: fieldId, describedBy }) => (
-              <textarea
-                id={fieldId}
-                rows={4}
-                maxLength={4000}
-                value={words[section.key] ?? ''}
-                aria-describedby={describedBy}
-                disabled={sending.busy}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setWords((was) => ({ ...was, [section.key]: value }));
-                }}
-              />
-            )}
-          </Field>
-        ))}
-
-        {other === undefined ? null : <Notice problem={other} />}
-
-        <DialogFoot busy={sending.busy} doing="Saving…" done="Save" onCancel={onClose} />
-      </form>
-    </Dialog>
-  );
-}
-
-/**
- * Sharing, once asked: the figures are saved a last time and it is fixed, and every BD manager may
- * read it and is emailed (the user, 25 November 2026).
- */
-function ShareDialog({
-  id,
-  onShared,
-  onClose,
-  onSignedOut,
-}: {
-  id: string;
-  onShared: (report: MeetingReportView) => void;
-  onClose: () => void;
-  onSignedOut: () => void;
-}) {
-  const sending = useSending(() => undefined, onSignedOut);
-  const other = sending.other([]);
-
-  return (
-    <Dialog
-      title="Share this report?"
-      intro="Its figures are saved as they stand now, and it can't be changed after. The BD managers can then read it, and each gets an email."
-      onClose={onClose}
-    >
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          sending.send(() => shareMeetingReport(id).then(onShared));
-        }}
-      >
-        {other === undefined ? null : <Notice problem={other} />}
-        <DialogFoot busy={sending.busy} doing="Sharing…" done="Share" onCancel={onClose} />
-      </form>
-    </Dialog>
-  );
-}
-
-/** Throwing the draft away, once asked: it is kept, out of the list, and another may be started. */
-function DiscardDialog({
-  id,
-  onClose,
-  onSignedOut,
-}: {
-  id: string;
-  onClose: () => void;
-  onSignedOut: () => void;
-}) {
-  const sending = useSending(() => {
-    window.location.hash = '#/clients';
-  }, onSignedOut);
-  const other = sending.other([]);
-
-  return (
-    <Dialog
-      title="Discard this draft?"
-      intro="It leaves your reports, and you can start another. It is kept on record."
-      onClose={onClose}
-    >
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          sending.send(() => discardMeetingReport(id));
-        }}
-      >
-        {other === undefined ? null : <Notice problem={other} />}
-        <DialogFoot busy={sending.busy} doing="Discarding…" done="Discard" onCancel={onClose} />
-      </form>
-    </Dialog>
-  );
-}
-
-/** Accra is UTC all year, so the browser's UTC day is the company's. */
-function todayInAccra(): string {
-  return new Date().toISOString().slice(0, 10);
 }

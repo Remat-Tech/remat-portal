@@ -1034,6 +1034,27 @@ export interface ClientsMeetingReportTable {
 }
 
 /**
+ * A BD manager's report to the CEO, for a period. #292. One draft each at a time; fixed once
+ * submitted or discarded.
+ */
+export interface ClientsCeoReportTable {
+  id: Generated<string>;
+  author_id: ColumnType<string, string, never>;
+  period_from: ColumnType<string, string, string>;
+  period_to: ColumnType<string, string, string>;
+  /** CeoReportFigures, written as JSON text and read back parsed. */
+  figures: ColumnType<unknown, string, string>;
+  figures_at: ColumnType<Date, never, Date>;
+  /** [{ key, heading, body }], written as JSON text and read back parsed. */
+  sections: ColumnType<unknown, string, string>;
+  status: ColumnType<'DRAFT' | 'SUBMITTED' | 'DISCARDED', never, 'SUBMITTED' | 'DISCARDED'>;
+  created_at: ColumnType<Date, never, never>;
+  submitted_at: ColumnType<Date | null, never, Date>;
+  submitted_to: ColumnType<string | null, never, string>;
+  discarded_at: ColumnType<Date | null, never, Date>;
+}
+
+/**
  * A POC flag the morning alerts have told somebody about, once per POC, flag, the moment it was
  * flagged from and person. #290. Written by the system with the email; never changed or deleted.
  */
@@ -1129,6 +1150,8 @@ export interface Database {
   clients_poc_alert: ClientsPocAlertTable;
   /** #291. */
   clients_meeting_report: ClientsMeetingReportTable;
+  /** #292. */
+  clients_ceo_report: ClientsCeoReportTable;
   /** #284. */
   clients_checklist_item: ClientsChecklistItemTable;
   /** #284. */

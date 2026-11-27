@@ -7,6 +7,8 @@ import { CompanyPipeline } from './CompanyPipeline';
 import { Dashboard } from './Dashboard';
 import { NewClientDialog } from './NewClient';
 import { LogActivityPage } from './LogActivity';
+import { CeoReportPage } from './CeoReportPage';
+import { ReceivedCeoReports } from './CeoReports';
 import { MeetingReportPage } from './MeetingReportPage';
 import { MyPipeline } from './MyPipeline';
 import { PocsList, PocView } from './PocsView';
@@ -77,14 +79,24 @@ export function ClientsPage({ onSignedOut }: { onSignedOut: () => void }) {
     (view.name === 'company' && reads) ||
     (view.name === 'dashboard' && reads) ||
     (view.name === 'report' && reads) ||
+    /* #292. A CEO report: a BD manager's own, or one submitted to the Chief Executive. */
+    (view.name === 'ceo-report' && (reads || views?.readCeoReports === true)) ||
+    (view.name === 'ceo-reports' && views?.readCeoReports === true) ||
     view.name === 'client' ||
     view.name === 'poc'
       ? view.name
-      : 'pipeline';
+      : /* The Chief Executive with no clients role has the CEO reports and nothing else. */
+        !reads && views?.readCeoReports === true
+        ? 'ceo-reports'
+        : 'pipeline';
 
   /* One client's page, a POC's and the logging page have their own way back, and need the room. */
   const onItsOwn =
-    showing === 'client' || showing === 'poc' || showing === 'log' || showing === 'report';
+    showing === 'client' ||
+    showing === 'poc' ||
+    showing === 'log' ||
+    showing === 'report' ||
+    showing === 'ceo-report';
 
   return (
     <div className="portal">
@@ -130,8 +142,17 @@ export function ClientsPage({ onSignedOut }: { onSignedOut: () => void }) {
         (views?.setUp === true ||
           views?.manageRoles === true ||
           views?.pastProposals === true ||
-          views?.pocs === true) ? (
+          views?.pocs === true ||
+          views?.readCeoReports === true) ? (
           <nav className="directory-views" aria-label="Clients views">
+            {views.readCeoReports ? (
+              <a
+                href="#/clients/ceo-reports"
+                aria-current={showing === 'ceo-reports' ? 'page' : undefined}
+              >
+                CEO reports
+              </a>
+            ) : null}
             {reads ? (
               <a href="#/clients" aria-current={showing === 'pipeline' ? 'page' : undefined}>
                 My pipeline
@@ -198,6 +219,19 @@ export function ClientsPage({ onSignedOut }: { onSignedOut: () => void }) {
           <PocView key={view.id} id={view.id} onSignedOut={onSignedOut} />
         ) : showing === 'report' && view.id !== undefined ? (
           <MeetingReportPage key={view.id} id={view.id} onSignedOut={onSignedOut} />
+        ) : showing === 'ceo-report' && view.id !== undefined ? (
+          <CeoReportPage
+            key={view.id}
+            id={view.id}
+            back={
+              reads
+                ? { href: '#/clients', label: 'My pipeline' }
+                : { href: '#/clients/ceo-reports', label: 'CEO reports' }
+            }
+            onSignedOut={onSignedOut}
+          />
+        ) : showing === 'ceo-reports' ? (
+          <ReceivedCeoReports onSignedOut={onSignedOut} />
         ) : showing === 'log' ? (
           <LogActivityPage
             key={`${view.id ?? ''}-${view.dealId ?? ''}`}
@@ -228,7 +262,10 @@ type ClientsView =
   | 'pocs'
   | 'poc'
   /* #291. A meeting report. */
-  | 'report';
+  | 'report'
+  /* #292. A CEO report, and the Chief Executive's list of those submitted to them. */
+  | 'ceo-report'
+  | 'ceo-reports';
 
 /**
  * Which view the address names, and the client, POC or deal for one. Logging is at `clients/log`
@@ -259,6 +296,14 @@ function viewOf(path: string): { name: ClientsView; id?: string; dealId?: string
 
   if (report !== null) {
     return { name: 'report', id: report[1] };
+  }
+  const ceoReport = /^clients\/ceo-report\/(\d{1,18})$/.exec(path);
+
+  if (ceoReport !== null) {
+    return { name: 'ceo-report', id: ceoReport[1] };
+  }
+  if (path === 'clients/ceo-reports') {
+    return { name: 'ceo-reports' };
   }
   if (path === 'clients/company') {
     return { name: 'company' };

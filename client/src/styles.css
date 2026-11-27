@@ -10657,6 +10657,12 @@ button.linkish.file-name {
   }
 }
 
+/* A CEO report's team table, #292: the total under the associates. */
+.clients-reports-list tr.is-total td {
+  border-top: 2px solid var(--line);
+  font-weight: 600;
+}
+
 /* A report's written sections, #291: a heading over each, "Nothing written" where empty. */
 .clients-report-written {
   margin-top: var(--gap);

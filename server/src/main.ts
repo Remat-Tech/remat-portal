@@ -27,6 +27,7 @@ import { ClientsPocRepository } from './apps/clients/poc.db.js';
 import { ClientsReassignRepository } from './apps/clients/reassign.db.js';
 import { ClientsMeetingReportRepository } from './apps/clients/meeting-report.db.js';
 import { ClientsReportContentsRepository } from './apps/clients/meeting-report-contents.db.js';
+import { ClientsCeoReportRepository } from './apps/clients/ceo-report.db.js';
 import { ClientsCheckRepository } from './apps/clients/checklist.db.js';
 import { ClientsChecklistItemRepository } from './apps/clients/checklist-item.db.js';
 import { CompanyCalendar } from './core/calendar/company-calendar.js';
@@ -409,6 +410,8 @@ const app = buildApp({
   /** #291. */
   clientsMeetingReports: new ClientsMeetingReportRepository(db),
   clientsReportContents: new ClientsReportContentsRepository(db),
+  /** #292. */
+  clientsCeoReports: new ClientsCeoReportRepository(db),
   /* The shared-report emails go into the outbox's table with the report, in one transaction, so
      the outbox is not there to nudge its sender itself. */
   clientsReportMail: {

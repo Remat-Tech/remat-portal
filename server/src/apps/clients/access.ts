@@ -24,6 +24,10 @@ export interface ClientsViews {
   pastProposals: boolean;
   /** The POC list and pages (CLI 100, CLI 101, #285). Anybody with a role. */
   pocs: boolean;
+  /** Drafting and submitting CEO reports (#292). A BD manager's. */
+  draftCeoReports: boolean;
+  /** Reading the CEO reports submitted to them (#292). The Chief Executive's. */
+  readCeoReports: boolean;
 }
 
 export function viewsOf(actor: Actor, access: ClientsAccess): ClientsViews {
@@ -32,13 +36,29 @@ export function viewsOf(actor: Actor, access: ClientsAccess): ClientsViews {
     manageRoles: clientsPolicy.manageRoles(actor, access).allowed,
     pastProposals: clientsPolicy.read(actor, access).allowed,
     pocs: clientsPolicy.read(actor, access).allowed,
+    draftCeoReports: clientsPolicy.ceoReport(actor, access).allowed,
+    readCeoReports: clientsPolicy.ceoReportScope(actor, access)?.everySubmitted === true,
   };
 }
+
+/** Who the organisation names as its Chief Executive, or null. #292. */
+export type ChiefExecutive = () => Promise<string | null>;
 
 export async function accessOf(
   actor: Actor,
   grants: Pick<ClientsRoleRepository, 'rolesOf'>,
+  /** Asked only where the CEO reports are; left out, nobody is the Chief Executive. */
+  chiefExecutive?: ChiefExecutive,
 ): Promise<ClientsAccess> {
   /* The system is nobody, and nobody holds a clients role. */
-  return { holds: actor.employeeId === null ? [] : await grants.rolesOf(actor.employeeId) };
+  if (actor.employeeId === null) {
+    return { holds: [] };
+  }
+
+  const holds = await grants.rolesOf(actor.employeeId);
+  if (chiefExecutive === undefined) {
+    return { holds };
+  }
+
+  return { holds, isChiefExecutive: (await chiefExecutive()) === actor.employeeId };
 }

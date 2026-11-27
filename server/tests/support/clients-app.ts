@@ -18,6 +18,9 @@ import { ClientsMeetingReportRepository } from '../../src/apps/clients/meeting-r
 import { MeetingReportService } from '../../src/apps/clients/meeting-report.service.js';
 import { ClientsReportContentsRepository } from '../../src/apps/clients/meeting-report-contents.db.js';
 import { clientsLinks } from '../../src/apps/clients/email.js';
+import { ClientsCeoReportRepository } from '../../src/apps/clients/ceo-report.db.js';
+import { CeoReportService } from '../../src/apps/clients/ceo-report.service.js';
+import { OrganisationRepository } from '../../src/core/organisation/settings/organisation.db.js';
 import { ClientsContactRepository } from '../../src/apps/clients/contact.db.js';
 import { ClientsProductInUseRepository } from '../../src/apps/clients/product-in-use.db.js';
 import { clientsDoor } from '../../src/apps/clients/door.js';
@@ -123,8 +126,21 @@ export async function startClientsApp(
     standings,
   );
 
+  /* #292. The Chief Executive the organisation names: the seed's Kwame, unless a test says. */
+  const organisation = new OrganisationRepository(db);
+  const chiefExecutive = () => organisation.chiefExecutiveId();
+  const dashboard = new DashboardService(
+    guard,
+    grants,
+    opportunities,
+    clientRecords,
+    pocs,
+    standings,
+  );
+
   const router = clientsRoutes({
-    door: clientsDoor(guard, grants),
+    door: clientsDoor(guard, grants, chiefExecutive),
+    chiefExecutive,
     grants,
     roles: new RoleService(guard, grants, new EmployeeRepository(db)),
     setup: new SetupService(
@@ -163,7 +179,16 @@ export async function startClientsApp(
       new ClientsReassignRepository(db),
       standings,
     ),
-    dashboard: new DashboardService(guard, grants, opportunities, clientRecords, pocs, standings),
+    dashboard,
+    ceoReports: new CeoReportService(
+      guard,
+      grants,
+      new ClientsCeoReportRepository(db),
+      dashboard,
+      chiefExecutive,
+      new EmployeeRepository(db),
+      { links: clientsLinks('http://portal.test'), nudge: () => undefined },
+    ),
     documents: new DocumentService(
       guard,
       grants,
@@ -182,7 +207,7 @@ export async function startClientsApp(
   });
 
   app.use('/api', router);
-  app.use('/api', portalRoutes({ apps: [clientsVisibility(guard, grants)] }));
+  app.use('/api', portalRoutes({ apps: [clientsVisibility(guard, grants, chiefExecutive)] }));
   app.use('/api', (_request: Request, response: Response) => {
     response.status(404).json(NO_SUCH_ROUTE);
   });

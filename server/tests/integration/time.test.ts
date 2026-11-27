@@ -191,7 +191,7 @@ describe('the columns', () => {
      the rule gives and the date it is due, the day it was done and the day the renewal runs
      to, the day an item was retired, and the day a reminder was for. A permit expires on the
      day printed on it, and a zone would move that day for whoever read it. Compliance TDD 6. */
-  it('the forty seven dates there are today are the ones expected', async () => {
+  it('the forty nine dates there are today are the ones expected', async () => {
     const dates = (await temporalColumns())
       .filter((column) => column.data_type === 'date')
       .map((column) => `${column.table_name}.${column.column_name}`);
@@ -202,6 +202,9 @@ describe('the columns', () => {
       'approval_delegation.starts_on',
       /** #280. The day a call or meeting happened, which may be long before it was logged. */
       'clients_activity.happened_on',
+      /** #292. The days a CEO report covers, both included. */
+      'clients_ceo_report.period_from',
+      'clients_ceo_report.period_to',
       /** #284. The day a checklist item stopped being copied onto new deals and POCs. */
       'clients_checklist_item.retired_on',
       /** #276. When a client started and stopped using a product. */
